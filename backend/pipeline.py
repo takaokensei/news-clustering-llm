@@ -95,9 +95,9 @@ def generate_representations(df):
     print(f"Matriz TF-IDF gerada: {tfidf_matrix.shape}")
     
     # --- REPRESENTATION 2: SentenceTransformers (Semantica Local) ---
-    print("\n--- Gerando Representacao SentenceTransformers (all-MiniLM-L6-v2) ---")
+    print("\n--- Gerando Representacao SentenceTransformers (paraphrase-multilingual-MiniLM-L12-v2) ---")
     try:
-        st_model = SentenceTransformer('all-MiniLM-L6-v2')
+        st_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
         st_embeddings = st_model.encode(texts, show_progress_bar=True)
         representations["sentence_transformers"] = np.array(st_embeddings)
         print(f"Embeddings SentenceTransformers gerados: {st_embeddings.shape}")

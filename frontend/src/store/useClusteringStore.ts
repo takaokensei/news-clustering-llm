@@ -103,7 +103,7 @@ export const useClusteringStore = create<ClusteringState>((set) => ({
   loading: false,
   error: null,
   
-  selectedRep: 'sentence_transformers',
+  selectedRep: 'ollama',
   selectedAlg: 'kmeans',
   selectedProj: 'umap',
   selectedCluster: null,
@@ -121,11 +121,29 @@ export const useClusteringStore = create<ClusteringState>((set) => ({
       }
       const data = await response.json();
       
-      // Select the first active representation if sentence_transformers is not available
+      // Dynamically find the configuration with the highest ARI (Adjusted Rand Index)
       const activeReps = data.active_representations || [];
-      const defaultRep = activeReps.includes('sentence_transformers') 
-        ? 'sentence_transformers' 
-        : activeReps[0] || 'tfidf';
+      let defaultRep = activeReps[0] || 'tfidf';
+      let defaultAlg = 'kmeans';
+      let maxARI = -1.0;
+
+      if (data.metrics) {
+        Object.entries(data.metrics).forEach(([configKey, metricObj]: [string, any]) => {
+          const parts = configKey.split('_');
+          if (parts.length >= 2) {
+            const alg = parts[parts.length - 1];
+            const rep = parts.slice(0, parts.length - 1).join('_');
+            
+            if (activeReps.includes(rep)) {
+              if (metricObj.ari > maxARI) {
+                maxARI = metricObj.ari;
+                defaultRep = rep;
+                defaultAlg = alg;
+              }
+            }
+          }
+        });
+      }
 
       set({
         dataset: data.dataset || [],
@@ -133,6 +151,7 @@ export const useClusteringStore = create<ClusteringState>((set) => ({
         llmExplanations: data.llm_explanations || {},
         activeRepresentations: activeReps,
         selectedRep: defaultRep,
+        selectedAlg: defaultAlg,
         loading: false
       });
     } catch (err: any) {

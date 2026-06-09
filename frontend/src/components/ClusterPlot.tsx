@@ -176,6 +176,27 @@ export const ClusterPlot: React.FC = () => {
     };
   }, [selectedDocId]);
 
+  // Native non-passive wheel event listener to allow preventDefault (fixing chrome scroll bug)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const onWheelNative = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomFactor = 1.1;
+      if (e.deltaY < 0) {
+        setZoom(prev => Math.min(prev * zoomFactor, 15.0));
+      } else {
+        setZoom(prev => Math.max(prev / zoomFactor, 0.5));
+      }
+    };
+
+    canvas.addEventListener('wheel', onWheelNative, { passive: false });
+    return () => {
+      canvas.removeEventListener('wheel', onWheelNative);
+    };
+  }, []);
+
   const toggleLegendItem = (item: string | number) => {
     setHiddenItems(prev => {
       const next = new Set(prev);
@@ -583,18 +604,6 @@ export const ClusterPlot: React.FC = () => {
     }
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    const zoomFactor = 1.1;
-    if (e.deltaY < 0) {
-      // Zoom in, cap at 15x
-      setZoom(prev => Math.min(prev * zoomFactor, 15.0));
-    } else {
-      // Zoom out, cap at 0.5x
-      setZoom(prev => Math.max(prev / zoomFactor, 0.5));
-    }
-  };
-
   return (
     <div className="relative w-full h-full flex flex-col glass-panel rounded-xl overflow-hidden">
       {/* Plot Toolbar */}
@@ -654,7 +663,6 @@ export const ClusterPlot: React.FC = () => {
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onClick={handleMouseClick}
-          onWheel={handleWheel}
           className="absolute inset-0 block"
         />
 
