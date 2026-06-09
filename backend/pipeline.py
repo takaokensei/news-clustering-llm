@@ -599,7 +599,24 @@ def main():
     metrics = {}
     
     # 3. Running Supervised Classification (comparison baseline)
-    classification_results = run_classification(representations, df["Categoria"].values)
+    # Skip if the existing JSON already has classification results (avoid re-running)
+    _existing_json = os.path.join(BASE_DIR, 'frontend', 'public', 'clustering_results.json')
+    _existing_classification = {}
+    if os.path.exists(_existing_json):
+        try:
+            with open(_existing_json, 'r', encoding='utf-8') as _f:
+                _existing_data = json.load(_f)
+            _existing_classification = _existing_data.get('classification', {})
+            if _existing_classification:
+                print("\n[CACHE] Resultados de classificação já existem no JSON. Pulando re-execução.")
+                print("        Para forçar re-execução: delete a chave 'classification' do JSON ou rode classify_only.py")
+        except Exception:
+            pass
+
+    if _existing_classification:
+        classification_results = _existing_classification
+    else:
+        classification_results = run_classification(representations, df["Categoria"].values)
 
     # 3b. Running Clustering & Metrics Evaluation
     print("\n--- Rodando Agrupamentos e Computando Metricas ---")
