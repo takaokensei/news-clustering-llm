@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+venv/
+ENV/
+backend/.env
+backend/outputs/clustering_results.json
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/package-lock.json
+frontend/.env
+frontend/.eslintcache
+
+# OS/System
+.DS_Store
+Thumbs.db

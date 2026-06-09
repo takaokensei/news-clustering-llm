@@ -1,0 +1,484 @@
+import React, { useRef, useEffect, useState } from 'react';
+import { useClusteringStore } from '../store/useClusteringStore';
+import type { Document } from '../store/useClusteringStore';
+import { ZoomIn, ZoomOut, RefreshCw, Eye, EyeOff } from 'lucide-react';
+
+export const ClusterPlot: React.FC = () => {
+  const {
+    dataset,
+    selectedRep,
+    selectedAlg,
+    selectedProj,
+    selectedCluster,
+    selectedDocId,
+    colorMode,
+    setSelectedCluster,
+    setSelectedDocId
+  } = useClusteringStore();
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Plot state
+  const [zoom, setZoom] = useState(1.0);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [hoveredDoc, setHoveredDoc] = useState<Document | null>(null);
+  const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
+  const [showAxes, setShowAxes] = useState(true);
+
+  // Tokyo Night Colors mapping
+  const clusterColors: { [key: number]: string } = {
+    [-1]: '#565f89', // Outliers (Muted Gray)
+    0: '#7aa2f7',    // Blue
+    1: '#bb9af7',    // Purple
+    2: '#ff9e64',    // Orange
+    3: '#9ece6a',    // Green
+    4: '#7dcfff',    // Cyan
+    5: '#e0af68',    // Yellow
+    6: '#f7768e',    // Red
+    7: '#1abc9c',    // Teal
+  };
+
+  const getCategoryColor = (category: string): string => {
+    const cleanCat = category.trim().toLowerCase();
+    if (cleanCat.includes('econ')) return '#7aa2f7'; // Economia -> Blue
+    if (cleanCat.includes('espor')) return '#ff9e64'; // Esportes -> Orange
+    if (cleanCat.includes('tecn') || cleanCat.includes('inova')) return '#9ece6a'; // Tecnologia -> Green
+    if (cleanCat.includes('pol')) return '#bb9af7'; // Politica -> Purple
+    if (cleanCat.includes('cult') || cleanCat.includes('art')) return '#e0af68'; // Cultura -> Yellow
+    if (cleanCat.includes('saud') || cleanCat.includes('med')) return '#f7768e'; // Saude -> Red
+    return '#1abc9c'; // Fallback -> Teal
+  };
+
+  const getDocColor = (doc: Document): string => {
+    if (colorMode === 'real') {
+      return getCategoryColor(doc.true_category);
+    }
+    const clusterId = doc.clustering[selectedRep]?.[selectedAlg];
+    return clusterColors[clusterId !== undefined ? clusterId : -1];
+  };
+
+  // Extract coordinates for current representation and projection
+  const getDocCoords = (doc: Document) => {
+    const proj = doc.projections[selectedRep]?.[selectedProj];
+    return proj ? { x: proj.x, y: proj.y } : null;
+  };
+
+  // Reset zoom and pan to fit all points
+  const resetZoom = () => {
+    setZoom(1.0);
+    setPan({ x: 0, y: 0 });
+  };
+
+  // Trigger redraw on state change
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Get container dimensions
+    const width = containerRef.current?.clientWidth || 600;
+    const height = containerRef.current?.clientHeight || 450;
+    
+    // Scale canvas for high-DPI screens
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    ctx.scale(dpr, dpr);
+
+    // Clear background (Tokyo Night dark background)
+    ctx.fillStyle = '#16161e';
+    ctx.fillRect(0, 0, width, height);
+
+    // Filter valid documents that have coordinates for selected configs
+    const validDocs = dataset.filter(doc => getDocCoords(doc) !== null);
+    if (validDocs.length === 0) {
+      // Draw message if empty
+      ctx.fillStyle = '#a9b1d6';
+      ctx.font = '14px Inter';
+      ctx.textAlign = 'center';
+      ctx.fillText('Nenhum dado disponível. Execute o pipeline Python.', width / 2, height / 2);
+      return;
+    }
+
+    // Find min/max ranges in the raw coordinates to fit to canvas
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+
+    validDocs.forEach(doc => {
+      const coords = getDocCoords(doc)!;
+      if (coords.x < minX) minX = coords.x;
+      if (coords.x > maxX) maxX = coords.x;
+      if (coords.y < minY) minY = coords.y;
+      if (coords.y > maxY) maxY = coords.y;
+    });
+
+    // Add padding to bounding box
+    const dx = maxX - minX || 1.0;
+    const dy = maxY - minY || 1.0;
+    minX -= dx * 0.1;
+    maxX += dx * 0.1;
+    minY -= dy * 0.1;
+    maxY += dy * 0.1;
+
+    const rangeX = maxX - minX;
+    const rangeY = maxY - minY;
+
+    // Helper function to project raw data coords to canvas viewport
+    const project = (x: number, y: number) => {
+      // Scale coordinates from range to canvas dimensions
+      const screenX = ((x - minX) / rangeX) * width;
+      // Invert Y axis for screen space
+      const screenY = height - ((y - minY) / rangeY) * height;
+
+      // Apply zoom and pan transformations
+      const transformedX = (screenX - width / 2) * zoom + width / 2 + pan.x;
+      const transformedY = (screenY - height / 2) * zoom + height / 2 + pan.y;
+
+      return { x: transformedX, y: transformedY };
+    };
+
+    // Unproject helper removed due to strict tsc unused local variable rules
+
+    // Draw Grid and Axes
+    if (showAxes) {
+      ctx.strokeStyle = 'rgba(56, 66, 97, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.font = '10px JetBrains Mono';
+      ctx.fillStyle = '#565f89';
+
+      // Draw horizontal reference grid lines
+      for (let i = 1; i < 5; i++) {
+        const gridY = (height / 5) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, gridY);
+        ctx.lineTo(width, gridY);
+        ctx.stroke();
+      }
+
+      // Draw vertical grid lines
+      for (let i = 1; i < 5; i++) {
+        const gridX = (width / 5) * i;
+        ctx.beginPath();
+        ctx.moveTo(gridX, 0);
+        ctx.lineTo(gridX, height);
+        ctx.stroke();
+      }
+    }
+
+    // 1. First Pass: Draw Unselected Nodes (slightly faded out if a cluster is focused)
+    validDocs.forEach(doc => {
+      const coords = getDocCoords(doc)!;
+      const pos = project(coords.x, coords.y);
+
+      const clusterId = doc.clustering[selectedRep]?.[selectedAlg];
+      const isFocusedCluster = selectedCluster === null || clusterId === selectedCluster;
+
+      if (!isFocusedCluster) {
+        // Draw unselected nodes faded out
+        ctx.fillStyle = getDocColor(doc);
+        ctx.globalAlpha = 0.15;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+
+    ctx.globalAlpha = 1.0;
+
+    // 2. Second Pass: Draw Selected/Focused Nodes
+    validDocs.forEach(doc => {
+      const coords = getDocCoords(doc)!;
+      const pos = project(coords.x, coords.y);
+
+      const clusterId = doc.clustering[selectedRep]?.[selectedAlg];
+      const isFocusedCluster = selectedCluster === null || clusterId === selectedCluster;
+
+      if (isFocusedCluster) {
+        const isSelectedDoc = doc.id === selectedDocId;
+        const color = getDocColor(doc);
+
+        // Draw soft glow under focused items
+        if (isSelectedDoc) {
+          ctx.shadowBlur = 15;
+          ctx.shadowColor = color;
+        }
+
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, isSelectedDoc ? 7 : 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw outer ring for the active selection
+        if (isSelectedDoc) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, 9, 0, Math.PI * 2);
+          ctx.stroke();
+          // Reset shadow
+          ctx.shadowBlur = 0;
+        }
+      }
+    });
+
+    // 3. Third Pass: Draw Hover Ring
+    if (hoveredDoc) {
+      const coords = getDocCoords(hoveredDoc);
+      if (coords) {
+        const pos = project(coords.x, coords.y);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 8, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    // Attach unproject for mouse click mapping
+    canvas.setAttribute('data-unproject', JSON.stringify({ minX, rangeX, minY, rangeY, width, height }));
+
+  }, [dataset, selectedRep, selectedAlg, selectedProj, selectedCluster, selectedDocId, zoom, pan, hoveredDoc, colorMode, showAxes]);
+
+  // Handle Dragging / Panning
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    if (isDragging) {
+      setPan({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+      return;
+    }
+
+    // Hit testing: Find node closest to cursor
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Unproject bounds logic (replicated locally for precision)
+    const width = canvas.width / (window.devicePixelRatio || 1);
+    const height = canvas.height / (window.devicePixelRatio || 1);
+
+    const validDocs = dataset.filter(doc => getDocCoords(doc) !== null);
+    if (validDocs.length === 0) return;
+
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+
+    validDocs.forEach(doc => {
+      const coords = getDocCoords(doc)!;
+      if (coords.x < minX) minX = coords.x;
+      if (coords.x > maxX) maxX = coords.x;
+      if (coords.y < minY) minY = coords.y;
+      if (coords.y > maxY) maxY = coords.y;
+    });
+
+    const dx = maxX - minX || 1.0;
+    const dy = maxY - minY || 1.0;
+    minX -= dx * 0.1;
+    maxX += dx * 0.1;
+    minY -= dy * 0.1;
+    maxY += dy * 0.1;
+
+    const rangeX = maxX - minX;
+    const rangeY = maxY - minY;
+
+    let closestDoc: Document | null = null;
+    let minDistance = 15; // Hit radius in screen pixels
+
+    validDocs.forEach(doc => {
+      const coords = getDocCoords(doc)!;
+      const screenX = ((coords.x - minX) / rangeX) * width;
+      const screenY = height - ((coords.y - minY) / rangeY) * height;
+
+      const tx = (screenX - width / 2) * zoom + width / 2 + pan.x;
+      const ty = (screenY - height / 2) * zoom + height / 2 + pan.y;
+
+      const dist = Math.sqrt((tx - mouseX) ** 2 + (ty - mouseY) ** 2);
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestDoc = doc;
+      }
+    });
+
+    if (closestDoc) {
+      setHoveredDoc(closestDoc);
+      // Position tooltip in container coordinate space
+      setHoverPos({ x: mouseX + 15, y: mouseY - 45 });
+    } else {
+      setHoveredDoc(null);
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleMouseClick = () => {
+    // Prevent selection if panning happened
+    if (hoveredDoc) {
+      setSelectedDocId(hoveredDoc.id);
+      const clusterId = hoveredDoc.clustering[selectedRep]?.[selectedAlg];
+      if (clusterId !== undefined) {
+        setSelectedCluster(clusterId);
+      }
+    } else {
+      // Clear selection if clicked on empty space
+      setSelectedDocId(null);
+      setSelectedCluster(null);
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const zoomFactor = 1.1;
+    if (e.deltaY < 0) {
+      // Zoom in, cap at 15x
+      setZoom(prev => Math.min(prev * zoomFactor, 15.0));
+    } else {
+      // Zoom out, cap at 0.5x
+      setZoom(prev => Math.max(prev / zoomFactor, 0.5));
+    }
+  };
+
+  return (
+    <div className="relative w-full h-full flex flex-col glass-panel rounded-xl overflow-hidden">
+      {/* Plot Toolbar */}
+      <div className="flex justify-between items-center px-4 py-2 bg-tokyo-dark bg-opacity-70 border-b border-tokyo-border text-sm z-10">
+        <div className="flex items-center space-x-2">
+          <span className="font-semibold text-tokyo-blue">Visualização 2D</span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-tokyo-panel text-tokyo-cyan border border-tokyo-border uppercase">
+            {selectedProj}
+          </span>
+        </div>
+        
+        <div className="flex items-center space-x-3">
+          {/* Toggle Grid */}
+          <button 
+            onClick={() => setShowAxes(!showAxes)}
+            className={`p-1.5 rounded transition ${showAxes ? 'text-tokyo-blue bg-tokyo-blue bg-opacity-10' : 'text-tokyo-muted hover:text-tokyo-text'}`}
+            title="Grade de Referência"
+          >
+            {showAxes ? <Eye size={16} /> : <EyeOff size={16} />}
+          </button>
+          
+          {/* Zoom In */}
+          <button 
+            onClick={() => setZoom(prev => Math.min(prev * 1.2, 15.0))}
+            className="p-1.5 rounded text-tokyo-muted hover:text-tokyo-text hover:bg-tokyo-panel transition"
+            title="Aumentar Zoom"
+          >
+            <ZoomIn size={16} />
+          </button>
+          
+          {/* Zoom Out */}
+          <button 
+            onClick={() => setZoom(prev => Math.max(prev / 1.2, 0.5))}
+            className="p-1.5 rounded text-tokyo-muted hover:text-tokyo-text hover:bg-tokyo-panel transition"
+            title="Diminuir Zoom"
+          >
+            <ZoomOut size={16} />
+          </button>
+          
+          {/* Reset View */}
+          <button 
+            onClick={resetZoom}
+            className="p-1.5 rounded text-tokyo-muted hover:text-tokyo-text hover:bg-tokyo-panel transition"
+            title="Redefinir Visão"
+          >
+            <RefreshCw size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* Plot Canvas */}
+      <div ref={containerRef} className="flex-1 w-full relative cursor-grab active:cursor-grabbing">
+        <canvas
+          ref={canvasRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onClick={handleMouseClick}
+          onWheel={handleWheel}
+          className="absolute inset-0 block"
+        />
+
+        {/* Floating Custom Tooltip */}
+        {hoveredDoc && (
+          <div
+            style={{ left: hoverPos.x, top: hoverPos.y }}
+            className="absolute z-20 pointer-events-none w-72 p-3 rounded-lg border border-tokyo-border bg-tokyo-panel bg-opacity-95 shadow-xl text-xs backdrop-blur-md transition-all duration-75"
+          >
+            <div className="flex justify-between items-start mb-1.5">
+              <span 
+                className="text-[10px] px-2 py-0.5 rounded font-bold uppercase"
+                style={{ 
+                  backgroundColor: `${getDocColor(hoveredDoc)}1A`, 
+                  color: getDocColor(hoveredDoc),
+                  border: `1px solid ${getDocColor(hoveredDoc)}33`
+                }}
+              >
+                {hoveredDoc.true_category}
+              </span>
+              <span className="text-tokyo-muted font-mono text-[9px]">ID: {hoveredDoc.id}</span>
+            </div>
+            <h4 className="font-semibold text-tokyo-text line-clamp-2 mb-1">
+              {hoveredDoc.original_text}
+            </h4>
+            <p className="text-[10px] text-tokyo-muted line-clamp-3 italic">
+              {hoveredDoc.expanded_text}
+            </p>
+            <div className="mt-2 pt-1 border-t border-tokyo-border flex justify-between text-[9px] text-tokyo-muted font-mono">
+              <span>Cluster Predito:</span>
+              <span className="font-bold text-tokyo-magenta">
+                #{hoveredDoc.clustering[selectedRep]?.[selectedAlg]}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Helper Legend Panel */}
+      <div className="px-4 py-2 bg-tokyo-dark bg-opacity-80 border-t border-tokyo-border text-[10px] text-tokyo-muted z-10 flex flex-wrap justify-between items-center space-x-2 gap-y-1">
+        <span>Arraste para mover, roda do mouse para zoom, clique para detalhar</span>
+        <div className="flex space-x-3">
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-tokyo-blue"></span>
+            <span>Economia</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-tokyo-orange"></span>
+            <span>Esportes</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-tokyo-green"></span>
+            <span>Tecnologia</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-tokyo-magenta"></span>
+            <span>Política</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-tokyo-yellow"></span>
+            <span>Cultura</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
