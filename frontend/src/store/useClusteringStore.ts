@@ -82,6 +82,7 @@ interface ClusteringState {
   selectedCluster: number | null;
   selectedDocId: number | null;
   colorMode: 'cluster' | 'real'; // Toggle node colors between predicted clusters and true categories
+  searchQuery: string;
   
   // Actions
   fetchResults: () => Promise<void>;
@@ -91,6 +92,7 @@ interface ClusteringState {
   setSelectedCluster: (cluster: number | null) => void;
   setSelectedDocId: (docId: number | null) => void;
   setColorMode: (mode: 'cluster' | 'real') => void;
+  setSearchQuery: (query: string) => void;
 }
 
 export const useClusteringStore = create<ClusteringState>((set) => ({
@@ -107,6 +109,7 @@ export const useClusteringStore = create<ClusteringState>((set) => ({
   selectedCluster: null,
   selectedDocId: null,
   colorMode: 'cluster',
+  searchQuery: '',
 
   fetchResults: async () => {
     set({ loading: true, error: null });
@@ -142,5 +145,6 @@ export const useClusteringStore = create<ClusteringState>((set) => ({
   setSelectedProj: (proj) => set({ selectedProj: proj }),
   setSelectedCluster: (cluster) => set({ selectedCluster: cluster, selectedDocId: null }),
   setSelectedDocId: (docId) => set({ selectedDocId: docId }),
-  setColorMode: (mode) => set({ colorMode: mode })
+  setColorMode: (mode) => set({ colorMode: mode }),
+  setSearchQuery: (query) => set({ searchQuery: query })
 }));

@@ -32,6 +32,13 @@ export const ClusterPlot: React.FC = () => {
   // Track container size for ResizeObserver-driven redraws
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
+  // Animation states and refs
+  const [animationTick, setAnimationTick] = useState(0);
+  const [pulseProgress, setPulseProgress] = useState(0);
+  const currentCoordsRef = useRef<Record<number, { x: number; y: number }>>({});
+  const animationFrameRef = useRef<number | null>(null);
+  const pulseFrameRef = useRef<number | null>(null);
+
   // Clear hidden items when configurations change
   useEffect(() => {
     setHiddenItems(new Set());
@@ -52,6 +59,122 @@ export const ClusterPlot: React.FC = () => {
     observer.observe(el);
     return () => observer.disconnect();
   }, [handleResize]);
+
+  // Initialize coords ref if it's empty and dataset is populated
+  if (Object.keys(currentCoordsRef.current).length === 0 && dataset.length > 0) {
+    const initialCoords: Record<number, { x: number; y: number }> = {};
+    dataset.forEach(doc => {
+      const proj = doc.projections[selectedRep]?.[selectedProj];
+      if (proj) {
+        initialCoords[doc.id] = { x: proj.x, y: proj.y };
+      }
+    });
+    currentCoordsRef.current = initialCoords;
+  }
+
+  // Morphing animation effect
+  useEffect(() => {
+    if (dataset.length === 0) return;
+
+    const targetCoords: Record<number, { x: number; y: number }> = {};
+    dataset.forEach(doc => {
+      const proj = doc.projections[selectedRep]?.[selectedProj];
+      if (proj) {
+        targetCoords[doc.id] = { x: proj.x, y: proj.y };
+      }
+    });
+
+    // If currentCoordsRef is empty, populate it
+    if (Object.keys(currentCoordsRef.current).length === 0) {
+      currentCoordsRef.current = targetCoords;
+      setAnimationTick(t => t + 1);
+      return;
+    }
+
+    const startCoords = { ...currentCoordsRef.current };
+    const startTime = performance.now();
+    const duration = 400; // ms
+
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    const easeInOutCubic = (t: number): number => {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    };
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easedProgress = easeInOutCubic(progress);
+
+      const nextCoords: Record<number, { x: number; y: number }> = {};
+      dataset.forEach(doc => {
+        const start = startCoords[doc.id];
+        const target = targetCoords[doc.id];
+        if (start && target) {
+          nextCoords[doc.id] = {
+            x: start.x + (target.x - start.x) * easedProgress,
+            y: start.y + (target.y - start.y) * easedProgress,
+          };
+        } else if (target) {
+          nextCoords[doc.id] = target;
+        }
+      });
+
+      currentCoordsRef.current = nextCoords;
+      setAnimationTick(t => t + 1);
+
+      if (progress < 1) {
+        animationFrameRef.current = requestAnimationFrame(animate);
+      } else {
+        animationFrameRef.current = null;
+      }
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [selectedRep, selectedProj, dataset]);
+
+  // Pulse animation effect
+  useEffect(() => {
+    if (selectedDocId === null) {
+      setPulseProgress(0);
+      return;
+    }
+
+    const startTime = performance.now();
+    const duration = 800; // ms
+
+    if (pulseFrameRef.current) {
+      cancelAnimationFrame(pulseFrameRef.current);
+    }
+
+    const animatePulse = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      setPulseProgress(progress);
+
+      if (progress < 1) {
+        pulseFrameRef.current = requestAnimationFrame(animatePulse);
+      } else {
+        pulseFrameRef.current = null;
+      }
+    };
+
+    pulseFrameRef.current = requestAnimationFrame(animatePulse);
+
+    return () => {
+      if (pulseFrameRef.current) {
+        cancelAnimationFrame(pulseFrameRef.current);
+      }
+    };
+  }, [selectedDocId]);
 
   const toggleLegendItem = (item: string | number) => {
     setHiddenItems(prev => {
@@ -99,8 +222,8 @@ export const ClusterPlot: React.FC = () => {
 
   // Extract coordinates for current representation and projection
   const getDocCoords = (doc: Document) => {
-    const proj = doc.projections[selectedRep]?.[selectedProj];
-    return proj ? { x: proj.x, y: proj.y } : null;
+    const coords = currentCoordsRef.current[doc.id];
+    return coords || null;
   };
 
   const getClusterLabel = (clusterId: number): string => {
@@ -307,6 +430,30 @@ export const ClusterPlot: React.FC = () => {
       }
     });
 
+    // Draw Selection Pulse ring
+    if (selectedDocId !== null && pulseProgress > 0 && pulseProgress < 1) {
+      const selectedDoc = dataset.find(d => d.id === selectedDocId);
+      if (selectedDoc) {
+        const coords = getDocCoords(selectedDoc);
+        if (coords) {
+          const pos = project(coords.x, coords.y);
+          const color = getDocColor(selectedDoc);
+          const maxRadius = 24;
+          const minRadius = 8;
+          const radius = minRadius + (maxRadius - minRadius) * pulseProgress;
+          const alpha = 1.0 - pulseProgress;
+
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = alpha;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 1.0;
+        }
+      }
+    }
+
     // 3. Third Pass: Draw Hover Ring
     if (hoveredDoc) {
       const coords = getDocCoords(hoveredDoc);
@@ -323,7 +470,7 @@ export const ClusterPlot: React.FC = () => {
     // Attach unproject for mouse click mapping
     canvas.setAttribute('data-unproject', JSON.stringify({ minX, rangeX, minY, rangeY, width, height }));
 
-  }, [dataset, selectedRep, selectedAlg, selectedProj, selectedCluster, selectedDocId, zoom, pan, hoveredDoc, colorMode, showAxes, hiddenItems, containerSize]);
+  }, [dataset, selectedRep, selectedAlg, selectedProj, selectedCluster, selectedDocId, zoom, pan, hoveredDoc, colorMode, showAxes, hiddenItems, containerSize, animationTick, pulseProgress]);
 
   // Handle Dragging / Panning
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
