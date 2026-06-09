@@ -35,6 +35,13 @@ from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score, silhouette_samples, davies_bouldin_score
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 
+# Supervised Classification imports
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import LinearSVC
+from sklearn.model_selection import StratifiedKFold, cross_val_predict
+from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
+from sklearn.preprocessing import LabelEncoder
+
 # Deep Learning / Embeddings (Local fallback)
 from sentence_transformers import SentenceTransformer
 
@@ -211,7 +218,65 @@ def calculate_metrics(X, true_labels, pred_labels):
         "noise_points": int(noise_points)
     }
 
-# 6. DIMENSIONALITY REDUCTION
+# 6. SUPERVISED CLASSIFICATION (for comparison with clustering)
+def run_classification(representations, true_labels_raw):
+    """
+    Runs Logistic Regression and LinearSVC with 5-fold stratified cross-validation
+    on each representation. Returns accuracy, macro F1, weighted F1, and per-class F1
+    for direct comparison with unsupervised clustering metrics.
+    """
+    print("\n--- Rodando Classificadores Supervisionados (5-fold CV) ---")
+    le = LabelEncoder()
+    y = le.fit_transform(true_labels_raw)  # numeric labels for sklearn
+    class_names = list(le.classes_)
+
+    classifiers = {
+        "logistic_regression": LogisticRegression(
+            max_iter=2000, C=1.0, solver='lbfgs', multi_class='multinomial', random_state=42
+        ),
+        "svm": LinearSVC(
+            max_iter=4000, C=1.0, random_state=42
+        ),
+    }
+
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    results = {}
+
+    for rep_name, X in representations.items():
+        if X is None:
+            print(f"  [SKIP] Representacao '{rep_name}' nao disponivel.")
+            continue
+        results[rep_name] = {}
+        for clf_name, clf in classifiers.items():
+            t0 = time.time()
+            print(f"  Treinando '{clf_name}' em '{rep_name}'...")
+            try:
+                # cross_val_predict gives predictions for each fold
+                y_pred = cross_val_predict(clf, X, y, cv=cv)
+                acc        = float(accuracy_score(y, y_pred))
+                f1_macro   = float(f1_score(y, y_pred, average='macro'))
+                f1_weighted= float(f1_score(y, y_pred, average='weighted'))
+                # Per-class F1 scores aligned with class names
+                f1_per_class = f1_score(y, y_pred, average=None)
+                per_class = {
+                    class_names[i]: round(float(f1_per_class[i]), 4)
+                    for i in range(len(class_names))
+                }
+                elapsed = time.time() - t0
+                results[rep_name][clf_name] = {
+                    "accuracy":     round(acc, 4),
+                    "f1_macro":     round(f1_macro, 4),
+                    "f1_weighted":  round(f1_weighted, 4),
+                    "f1_per_class": per_class,
+                    "time_taken":   round(elapsed, 3),
+                }
+                print(f"    -> Acc={acc:.4f}  F1-macro={f1_macro:.4f}  F1-weighted={f1_weighted:.4f}  ({elapsed:.2f}s)")
+            except Exception as e:
+                print(f"    [ERR] Falha em '{clf_name}' / '{rep_name}': {e}")
+                results[rep_name][clf_name] = None
+    return results
+
+# 7. DIMENSIONALITY REDUCTION
 def run_dim_reduction(X, method):
     if X is None:
         return None
@@ -533,7 +598,10 @@ def main():
     cluster_labels = {rep: {} for rep in active_representations}
     metrics = {}
     
-    # 3. Running Clustering & Metrics Evaluation
+    # 3. Running Supervised Classification (comparison baseline)
+    classification_results = run_classification(representations, df["Categoria"].values)
+
+    # 3b. Running Clustering & Metrics Evaluation
     print("\n--- Rodando Agrupamentos e Computando Metricas ---")
     algorithms = ["kmeans", "agglomerative", "dbscan", "hdbscan"]
     
@@ -636,6 +704,7 @@ def main():
     final_output = {
         "dataset": output_records,
         "metrics": metrics,
+        "classification": classification_results,
         "llm_explanations": llm_explanations,
         "active_representations": active_representations
     }

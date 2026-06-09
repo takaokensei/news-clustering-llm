@@ -4,6 +4,7 @@ import { ClusterPlot } from './components/ClusterPlot';
 import { ClusterDetails } from './components/ClusterDetails';
 import { LLMComparison } from './components/LLMComparison';
 import { MetricsPanel } from './components/MetricsPanel';
+import { ClassificationPanel } from './components/ClassificationPanel';
 import { Brain, RefreshCw } from 'lucide-react';
 
 function App() {
@@ -193,9 +194,10 @@ function App() {
             <ClusterPlot />
           </div>
 
-          {/* Bottom Grid: Metrics and LLM Comparer */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-72">
+          {/* Bottom Grid: Metrics, Classification, LLM Comparer */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-80">
             <MetricsPanel />
+            <ClassificationPanel />
             <LLMComparison />
           </div>
 

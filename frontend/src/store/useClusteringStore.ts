@@ -63,9 +63,22 @@ export interface LLMExplanationWrapper {
   }>;
 }
 
+export interface ClassificationResult {
+  accuracy: number;
+  f1_macro: number;
+  f1_weighted: number;
+  f1_per_class: Record<string, number>;
+  time_taken: number;
+}
+
 interface ClusteringState {
   dataset: Document[];
   metrics: { [config: string]: Metric };
+  classification: {
+    [rep: string]: {
+      [clf: string]: ClassificationResult | null;
+    };
+  };
   llmExplanations: {
     [config: string]: {
       [clusterId: string]: LLMExplanationWrapper;
@@ -98,6 +111,7 @@ interface ClusteringState {
 export const useClusteringStore = create<ClusteringState>((set) => ({
   dataset: [],
   metrics: {},
+  classification: {},
   llmExplanations: {},
   activeRepresentations: [],
   loading: false,
@@ -148,6 +162,7 @@ export const useClusteringStore = create<ClusteringState>((set) => ({
       set({
         dataset: data.dataset || [],
         metrics: data.metrics || {},
+        classification: data.classification || {},
         llmExplanations: data.llm_explanations || {},
         activeRepresentations: activeReps,
         selectedRep: defaultRep,

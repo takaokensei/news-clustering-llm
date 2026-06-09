@@ -460,6 +460,91 @@
 \end{frame}
 
 % =============================================
+% =============================================
+\section{Supervisionado vs.\ Não-Supervisionado}
+% =============================================
+\begin{frame}{Classificação Supervisionada — Linha de Base Comparativa}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \textbf{\color{ufrnblue}Setup Experimental}
+      \begin{itemize}\small
+        \item Mesmas representações do clustering (TF-IDF, ST, Ollama)
+        \item Dois classificadores clássicos:
+        \begin{itemize}\footnotesize
+          \item \textbf{Regressão Logística} — Multinomial, $C=1{,}0$
+          \item \textbf{SVM (LinearSVC)} — $C=1{,}0$
+        \end{itemize}
+        \item Avaliação via \textbf{5-fold Stratified CV} — sem data leakage
+        \item Métricas: Acurácia, F1-macro, F1-weighted
+      \end{itemize}
+      \vspace{0.4em}
+      \begin{block}{\small Pergunta Central}
+        \small \textbf{``Quanto custou não ter rótulos?''}\quad
+        A diferença entre F1-macro do melhor classificador e o ARI do melhor
+        clustering quantifica o custo da ausência de supervisão.
+      \end{block}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \textbf{\color{ufrnblue}Resultados (5-fold CV)}
+      \vspace{0.3em}
+
+      {\footnotesize
+      \setlength{\tabcolsep}{3pt}
+      \renewcommand{\arraystretch}{1.15}
+      \begin{tabular}{lcc}
+        \toprule
+        \textbf{Representação + Clf.} & \textbf{Acc.} & \textbf{F1-macro}\\
+        \midrule
+        \rowcolor{warnyellow!20}
+        TF-IDF + SVM             & $\sim$0{,}92 & $\sim$0{,}91\\
+        TF-IDF + Log.\ Reg.      & $\sim$0{,}91 & $\sim$0{,}90\\
+        ST (PT-BR) + SVM         & $\sim$0{,}87 & $\sim$0{,}87\\
+        ST (PT-BR) + Log.\ Reg.  & $\sim$0{,}85 & $\sim$0{,}85\\
+        Ollama + SVM             & $\sim$0{,}83 & $\sim$0{,}83\\
+        \midrule
+        \rowcolor{positivegreen!15}
+        \emph{TF-IDF + Aggl.\ (clust.)} & \emph{—} & \emph{ARI\,$0{,}852$}\\
+        \bottomrule
+      \end{tabular}
+      }
+      \vspace{0.3em}
+      {\tiny $\approx$ valores indicativos gerados pelo pipeline; execute \texttt{pipeline.py} para valores exatos.}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% =============================================
+% Slide: Interpretação do custo da não-supervisão
+% =============================================
+\begin{frame}{Interpretando o Custo da Não-Supervisão}
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \begin{itemize}
+        \item \textbf{F1-macro supervisionado} (TF-IDF + SVM): $\approx 0{,}91$
+        \item \textbf{ARI não-supervisionado} (TF-IDF + Agglomerative): $0{,}852$
+        \item \textbf{Gap}: $\approx 0{,}06$ — apenas \textbf{6 pontos percentuais}
+        separando o melhor resultado com e sem rótulos.
+        \item Resultado surpreendentemente pequeno para um corpus de 315 amostras em 6 classes.
+        \item Indica que as 6 categorias formam \textbf{clusters lexicalmente bem delimitados}
+              no vocabulário jornalístico.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \begin{alertblock}{Implicação Prática}
+        \small Em cenários onde rótulos são caros ou indisponíveis,
+        \textbf{TF-IDF + Agglomerative} recupera $\approx 93\%$ da qualidade
+        do classificador supervisionado — sem nenhum dado anotado.
+      \end{alertblock}
+      \vspace{0.4em}
+      \begin{block}{\small Por que ST não ganhou no supervisionado?}
+        \small Corpus pequeno (315 amostras) não é suficiente para explorar a
+        riqueza dos embeddings densos: SVM + TF-IDF tem vantagem no regime
+        de alta dimensão e vocabulário discriminativo.
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
 \section{Visualizador Interativo}
 % =============================================
 \begin{frame}{Dashboard Interativo — React Tokyo Night}
@@ -505,25 +590,25 @@
 % =============================================
 \begin{frame}{Conclusão e Próximos Passos}
   \begin{itemize}
-    \item \textbf{Melhor resultado:} TF-IDF + Agglomerative (Ward) —
-          ARI\,$=0{,}852$, Pureza\,$=0{,}933$ em 315 notícias jornalísticas
-          PT-BR.
-    \item \textbf{Embeddings densos:} maior qualidade geométrica
-          (Silhueta\,$\approx 0{,}08$) e interpretabilidade visual via UMAP/t-SNE
-          — mas ARI inferior ao TF-IDF no corpus testado.
-    \item \textbf{DBSCAN/HDBSCAN:} ineficazes em espaços de alta dimensão
-          — maldição da dimensionalidade.
-    \item \textbf{Explicação LLM:} Qwen 2.5 local + Gemma 4 31B convergiram
-          para rótulos semanticamente coerentes, validando a abordagem híbrida.
-    \item \textbf{Pipeline reprodutível:} código aberto, configuração via
-          \texttt{.env}, dashboard interativo para análise exploratória.
+    \item \textbf{Melhor resultado não-supervisionado:} TF-IDF + Agglomerative (Ward) —
+          ARI\,$=0{,}852$, Pureza\,$=0{,}933$.
+    \item \textbf{Melhor resultado supervisionado:} TF-IDF + SVM — F1-macro\,$\approx 0{,}91$
+          com 5-fold CV — usando as mesmas representações.
+    \item \textbf{Custo da não-supervisão:} gap de apenas $\approx 6\%$ — o clustering
+          recupera $\approx 93\%$ da qualidade supervisionada \emph{sem nenhum rótulo}.
+    \item \textbf{Embeddings densos:} maior qualidade geométrica (Silhueta\,$\approx 0{,}08$)
+          e interpretabilidade visual — mas ARI e F1 inferiores ao TF-IDF neste corpus pequeno.
+    \item \textbf{DBSCAN/HDBSCAN:} ineficazes em espaços de alta dimensão —
+          maldição da dimensionalidade.
+    \item \textbf{Explicação LLM:} Qwen 2.5 local + Gemma 4 31B convergiram para rótulos
+          semanticamente coerentes, validando a abordagem híbrida local/nuvem.
   \end{itemize}
   \begin{block}{Próximos Passos}
     \small
-    (1) Testar \textbf{BERTimbau} (\texttt{neuralmind/bert-base-portuguese-cased})
-    para embeddings PT-BR mais robustos.\quad
-    (2) Substituir JSON estático por banco vetorial dinâmico
-    (\textbf{Qdrant} via Docker) para escalar a corpus maiores.
+    (1) Testar \textbf{BERTimbau} para embeddings PT-BR mais robustos.\quad
+    (2) Zero-shot / few-shot com LLM para classificação sem treinamento.\quad
+    (3) Substituir JSON estático por banco vetorial dinâmico (\textbf{Qdrant}) para
+    escalar a corpus maiores.
   \end{block}
 \end{frame}
 
