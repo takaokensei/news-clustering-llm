@@ -569,8 +569,10 @@ def main():
     
     if "sentence_transformers" in active_representations:
         configs_to_explain.append(("sentence_transformers", "kmeans"))
+        configs_to_explain.append(("sentence_transformers", "agglomerative"))
     if "tfidf" in active_representations:
         configs_to_explain.append(("tfidf", "kmeans"))
+        configs_to_explain.append(("tfidf", "agglomerative"))
         
     print("\n--- Selecionando Exemplos Criticos e Executando Explicacoes com LLM ---")
     for rep_name, alg_name in configs_to_explain:

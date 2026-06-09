@@ -224,12 +224,12 @@ export const ClusterPlot: React.FC = () => {
 
   const getCategoryColor = (category: string): string => {
     const cleanCat = category.trim().toLowerCase();
-    if (cleanCat.includes('econ')) return '#7aa2f7'; // Economia -> Blue
-    if (cleanCat.includes('espor')) return '#ff9e64'; // Esportes -> Orange
-    if (cleanCat.includes('tecn') || cleanCat.includes('inova')) return '#9ece6a'; // Tecnologia -> Green
-    if (cleanCat.includes('pol')) return '#bb9af7'; // Politica -> Purple
-    if (cleanCat.includes('cult') || cleanCat.includes('art')) return '#e0af68'; // Cultura -> Yellow
-    if (cleanCat.includes('saud') || cleanCat.includes('med')) return '#f7768e'; // Saude -> Red
+    if (cleanCat === 'economia') return '#7aa2f7'; // Economia -> Blue
+    if (cleanCat === 'esportes') return '#ff9e64'; // Esportes -> Orange
+    if (cleanCat === 'polícia e direitos') return '#f7768e'; // Polícia e Direitos -> Red
+    if (cleanCat === 'política') return '#bb9af7'; // Política -> Purple
+    if (cleanCat === 'turismo') return '#7dcfff'; // Turismo -> Cyan
+    if (cleanCat === 'variedades e sociedade') return '#e0af68'; // Variedades e Sociedade -> Yellow
     return '#1abc9c'; // Fallback -> Teal
   };
 
@@ -707,7 +707,7 @@ export const ClusterPlot: React.FC = () => {
         <div className="flex flex-wrap gap-3">
           {colorMode === 'real' ? (
             // Real categories legend
-            ["Economia", "Esportes", "Tecnologia", "Política", "Cultura", "Saúde"].map(cat => {
+            ["Economia", "Esportes", "Polícia e Direitos", "Política", "Turismo", "Variedades e Sociedade"].map(cat => {
               const isHidden = hiddenItems.has(cat);
               const color = getCategoryColor(cat);
               return (

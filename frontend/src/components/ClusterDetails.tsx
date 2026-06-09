@@ -20,12 +20,12 @@ export const ClusterDetails: React.FC = () => {
 
   const getCategoryColor = (category: string): string => {
     const cleanCat = category.trim().toLowerCase();
-    if (cleanCat.includes('econ')) return '#7aa2f7'; // Economia -> Blue
-    if (cleanCat.includes('espor')) return '#ff9e64'; // Esportes -> Orange
-    if (cleanCat.includes('tecn') || cleanCat.includes('inova')) return '#9ece6a'; // Tecnologia -> Green
-    if (cleanCat.includes('pol')) return '#bb9af7'; // Politica -> Purple
-    if (cleanCat.includes('cult') || cleanCat.includes('art')) return '#e0af68'; // Cultura -> Yellow
-    if (cleanCat.includes('saud') || cleanCat.includes('med')) return '#f7768e'; // Saude -> Red
+    if (cleanCat === 'economia') return '#7aa2f7'; // Economia -> Blue
+    if (cleanCat === 'esportes') return '#ff9e64'; // Esportes -> Orange
+    if (cleanCat === 'polícia e direitos') return '#f7768e'; // Polícia e Direitos -> Red
+    if (cleanCat === 'política') return '#bb9af7'; // Política -> Purple
+    if (cleanCat === 'turismo') return '#7dcfff'; // Turismo -> Cyan
+    if (cleanCat === 'variedades e sociedade') return '#e0af68'; // Variedades e Sociedade -> Yellow
     return '#1abc9c'; // Fallback -> Teal
   };
 
@@ -115,6 +115,22 @@ export const ClusterDetails: React.FC = () => {
     return coherenceColors[clean] || 'text-tokyo-muted bg-tokyo-panel border-tokyo-border';
   };
 
+  const getClusterLabel = (clusterId: number): string => {
+    if (clusterId === -1) return 'Ruído / Outliers';
+    if (hasLLMExplanation && explanation && explanation.rotulo && explanation.rotulo !== 'Não Executado' && explanation.rotulo !== 'Erro ao Processar') {
+      return explanation.rotulo;
+    }
+    // Fallback: derive dominant category from dataset
+    const clusterDocs = dataset.filter(doc => doc.clustering[selectedRep]?.[selectedAlg] === clusterId);
+    if (clusterDocs.length > 0) {
+      const counts: Record<string, number> = {};
+      clusterDocs.forEach(d => { counts[d.true_category] = (counts[d.true_category] || 0) + 1; });
+      const dominant = Object.entries(counts).sort(([,a],[,b]) => b - a)[0]?.[0];
+      if (dominant) return dominant;
+    }
+    return `Cluster #${clusterId}`;
+  };
+
   // Node details (if a document is clicked)
   const selectedDoc = dataset.find(d => d.id === selectedDocId);
 
@@ -126,7 +142,7 @@ export const ClusterDetails: React.FC = () => {
           {selectedCluster !== null ? (
             <>
               <Layers size={16} className="text-tokyo-magenta animate-pulse" />
-              <h3 className="font-semibold text-tokyo-text">Detalhes do Cluster #{selectedCluster}</h3>
+              <h3 className="font-semibold text-tokyo-text">Grupo #{selectedCluster}: {getClusterLabel(selectedCluster)}</h3>
             </>
           ) : (
             <>
@@ -241,7 +257,7 @@ export const ClusterDetails: React.FC = () => {
             <div className="flex justify-between items-start mb-2 gap-2">
               <h4 className="font-bold text-tokyo-blue flex items-center">
                 <Award size={15} className="mr-1.5" />
-                {hasLLMExplanation ? explanation.rotulo : `Cluster #${selectedCluster}`}
+                {selectedCluster !== null ? getClusterLabel(selectedCluster) : ''}
               </h4>
               {hasLLMExplanation && (
                 <span className={`text-[10px] px-2 py-0.5 rounded-full border uppercase font-semibold ${getCoherenceStyle(explanation.coerencia)}`}>
