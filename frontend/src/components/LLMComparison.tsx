@@ -55,7 +55,7 @@ export const LLMComparison: React.FC = () => {
             <div className="flex justify-between items-center pb-2 border-b border-tokyo-border border-opacity-40">
               <span className="font-bold text-tokyo-blue flex items-center">
                 <Cloud size={14} className="mr-1.5" />
-                Gemini 2.5 Flash
+                Gemma 4 31B (Nuvem)
               </span>
               <span className="text-[10px] text-tokyo-cyan font-mono bg-tokyo-cyan bg-opacity-10 px-2 py-0.5 rounded border border-tokyo-cyan border-opacity-20 flex items-center">
                 <Clock size={10} className="mr-1" />

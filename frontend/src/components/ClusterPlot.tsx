@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useClusteringStore } from '../store/useClusteringStore';
 import type { Document } from '../store/useClusteringStore';
 import { ZoomIn, ZoomOut, RefreshCw, Eye, EyeOff } from 'lucide-react';
@@ -29,11 +29,29 @@ export const ClusterPlot: React.FC = () => {
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
   const [showAxes, setShowAxes] = useState(true);
   const [hiddenItems, setHiddenItems] = useState<Set<string | number>>(new Set());
+  // Track container size for ResizeObserver-driven redraws
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   // Clear hidden items when configurations change
   useEffect(() => {
     setHiddenItems(new Set());
   }, [colorMode, selectedRep, selectedAlg]);
+
+  // ResizeObserver: rerender canvas when container size changes
+  const handleResize = useCallback((entries: ResizeObserverEntry[]) => {
+    for (const entry of entries) {
+      const { width, height } = entry.contentRect;
+      setContainerSize({ width, height });
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(handleResize);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleResize]);
 
   const toggleLegendItem = (item: string | number) => {
     setHiddenItems(prev => {
@@ -86,7 +104,7 @@ export const ClusterPlot: React.FC = () => {
   };
 
   const getClusterLabel = (clusterId: number): string => {
-    if (clusterId === -1) return 'Ruído';
+    if (clusterId === -1) return 'Ruído / Outliers';
     const configKey = `${selectedRep}_${selectedAlg}`;
     const clusterData = llmExplanations[configKey]?.[clusterId];
     if (clusterData) {
@@ -94,8 +112,16 @@ export const ClusterPlot: React.FC = () => {
         ? clusterData?.explanations?.gemini 
         : clusterData?.explanations?.ollama;
       if (explanation && explanation.rotulo && explanation.rotulo !== 'Não Executado' && explanation.rotulo !== 'Erro ao Processar') {
-        return `Cluster ${clusterId}: ${explanation.rotulo}`;
+        return `${explanation.rotulo}`;
       }
+    }
+    // Fallback: derive dominant category from dataset when LLM is not available
+    const clusterDocs = dataset.filter(doc => doc.clustering[selectedRep]?.[selectedAlg] === clusterId);
+    if (clusterDocs.length > 0) {
+      const counts: Record<string, number> = {};
+      clusterDocs.forEach(d => { counts[d.true_category] = (counts[d.true_category] || 0) + 1; });
+      const dominant = Object.entries(counts).sort(([,a],[,b]) => b - a)[0]?.[0];
+      if (dominant) return `${dominant} (${clusterDocs.length})`;  
     }
     return `Cluster ${clusterId}`;
   };
@@ -106,7 +132,7 @@ export const ClusterPlot: React.FC = () => {
     setPan({ x: 0, y: 0 });
   };
 
-  // Trigger redraw on state change
+  // Trigger redraw on state change (also triggered by containerSize change via ResizeObserver)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -297,7 +323,7 @@ export const ClusterPlot: React.FC = () => {
     // Attach unproject for mouse click mapping
     canvas.setAttribute('data-unproject', JSON.stringify({ minX, rangeX, minY, rangeY, width, height }));
 
-  }, [dataset, selectedRep, selectedAlg, selectedProj, selectedCluster, selectedDocId, zoom, pan, hoveredDoc, colorMode, showAxes, hiddenItems]);
+  }, [dataset, selectedRep, selectedAlg, selectedProj, selectedCluster, selectedDocId, zoom, pan, hoveredDoc, colorMode, showAxes, hiddenItems, containerSize]);
 
   // Handle Dragging / Panning
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -380,8 +406,12 @@ export const ClusterPlot: React.FC = () => {
 
     if (closestDoc) {
       setHoveredDoc(closestDoc);
-      // Position tooltip in container coordinate space
-      setHoverPos({ x: mouseX + 15, y: mouseY - 45 });
+      // Bounds-checked tooltip: keep it within container (288px wide tooltip)
+      const TOOLTIP_W = 290;
+      const TOOLTIP_H = 130;
+      const safeX = mouseX + 15 + TOOLTIP_W > width ? mouseX - TOOLTIP_W - 10 : mouseX + 15;
+      const safeY = mouseY - 45 < 0 ? mouseY + 15 : mouseY - TOOLTIP_H > height ? height - TOOLTIP_H - 10 : mouseY - 45;
+      setHoverPos({ x: safeX, y: safeY });
     } else {
       setHoveredDoc(null);
     }

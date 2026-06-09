@@ -213,7 +213,7 @@ function App() {
         <span>Dataset: Base de notícias expandidas (315 registros válidos)</span>
         <div className="flex space-x-4">
           <span>Ollama: qwen2.5:7b</span>
-          <span>Gemini: gemini-2.5-flash</span>
+          <span>Nuvem: Gemma 4 31B (gemma-4-31b-it)</span>
           <span>Tokyo Night Design</span>
         </div>
       </footer>
