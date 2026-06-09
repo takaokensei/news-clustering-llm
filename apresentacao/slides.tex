@@ -10,18 +10,21 @@
 \usepackage{tikz}
 \usepackage{xcolor}
 \usepackage{colortbl}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{microtype}   % Melhora justificação e reduz overfull hbox
 
-% --- CONFIGURAÇÕES DE TEMA BEAMER ---
+% --- TEMA BEAMER ---
 \usetheme{Madrid}
 \usecolortheme{whale}
 
-% Customização de cores (Azul UFRN e cinza escuro)
+% Paleta de cores UFRN
 \definecolor{ufrnblue}{RGB}{10, 58, 96}
 \definecolor{accentblue}{RGB}{30, 144, 255}
-\definecolor{charcoal}{RGB}{43, 43, 43}
 \definecolor{positivegreen}{RGB}{0, 153, 76}
 \definecolor{warnyellow}{RGB}{204, 153, 0}
 \definecolor{negred}{RGB}{180, 30, 30}
+\definecolor{lightgray}{RGB}{240, 240, 240}
 
 \setbeamercolor{palette primary}{bg=ufrnblue, fg=white}
 \setbeamercolor{palette secondary}{bg=accentblue, fg=white}
@@ -30,17 +33,18 @@
 \setbeamercolor{structure}{fg=ufrnblue}
 \setbeamercolor{block title}{bg=ufrnblue, fg=white}
 \setbeamercolor{block body}{bg=ufrnblue!8}
+\setbeamercolor{alerted text}{fg=negred}
 
-% Fontes e numeração de slides
-\setbeamertemplate{navigation symbols}{} % Remove os ícones de navegação chatos
-\setbeamertemplate{footline}[frame number] % Mostra o número de slides limpo
+% Remove ícones de navegação; mostra número de frame limpo
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
 
 % --- METADADOS ---
 \title[Clustering \& LLM]{Agrupamento de Notícias com Análise por LLM}
-\subtitle{Comparação entre Representações Frequenciais, Embeddings Densos e\\Explicação Semântica Automatizada com Modelos de Linguagem}
-\author[Cauã Vitor]{Cauã Vitor\\{\small Orientador: Prof. José Alfredo F. Costa}}
-\institute[UFRN]{Universidade Federal do Rio Grande do Norte (UFRN)\\Departamento de Engenharia de Computação e Automação (DCA)}
-\date[2026]{Junho de 2026}
+\subtitle{Representações Frequenciais e Semânticas · 4 Algoritmos · Explicação Automática}
+\author[Cauã Vitor]{Cauã Vitor\\{\small Orientador: Prof.\ José Alfredo F.\ Costa}}
+\institute[UFRN]{Universidade Federal do Rio Grande do Norte\\Departamento de Engenharia de Computação e Automação (DCA)}
+\date[Jun/2026]{Junho de 2026}
 
 \begin{document}
 
@@ -52,359 +56,488 @@
 \end{frame}
 
 % =============================================
-% Slide 2: Sumário
+% Slide 2: Roteiro
 % =============================================
 \begin{frame}{Roteiro da Apresentação}
   \tableofcontents[hideallsubsections]
 \end{frame}
 
+% =============================================
 \section{Motivação e Objetivo}
 % =============================================
-% Slide 3: Motivação
-% =============================================
 \begin{frame}{Motivação e Objetivo}
-  \begin{columns}
-    \begin{column}{0.55\textwidth}
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
       \begin{itemize}
-        \item \textbf{Problema:} Agrupar automaticamente notícias em categorias temáticas \emph{sem supervisão humana} — tarefa clássica e desafiadora em PLN.
-        \item \textbf{Dataset:} 315 notícias em português distribuídas em \textbf{6 classes temáticas} rotuladas:
-        \begin{itemize}
-          \item Política, Economia, Esportes
-          \item Cultura, Saúde, Tecnologia/Meio Ambiente
+        \item \textbf{Problema:} Agrupar notícias em categorias temáticas
+              \emph{sem supervisão humana} — tarefa clássica e desafiadora em PLN.
+        \item \textbf{Dataset:} 315 notícias em português, \textbf{6 classes}:
+        \begin{itemize}\small
+          \item Economia, Esportes, Política
+          \item Polícia e Direitos, Turismo
+          \item Variedades e Sociedade
         \end{itemize}
-        \item \textbf{Questão de Pesquisa:} Qual representação vetorial e qual algoritmo produz grupos mais coerentes com a semântica humana?
+        \item \textbf{Questão de Pesquisa:} Qual representação vetorial e qual
+              algoritmo produz grupos mais coerentes com a semântica humana?
       \end{itemize}
     \end{column}
-    \begin{column}{0.43\textwidth}
-      \begin{block}{Abordagem do Experimento}
+    \begin{column}{0.42\textwidth}
+      \begin{block}{Pipeline do Experimento}
         \small
         \begin{enumerate}
-          \item Vetorização: TF-IDF vs Embeddings Densos
-          \item Clustering: 4 algoritmos distintos
+          \item Vetorização: TF-IDF vs Embeddings
+          \item Clustering: 4 algoritmos × 3 representações
           \item Projeção 2D: PCA, t-SNE, UMAP
-          \item Explicação Semântica via LLM Local + Nuvem
+          \item Seleção de landmarks (medoides/fronteiras)
+          \item Explicação semântica via LLM
         \end{enumerate}
       \end{block}
     \end{column}
   \end{columns}
 \end{frame}
 
+% =============================================
 \section{Representações Vetoriais}
 % =============================================
-% Slide 4: Representações Vetoriais
-% =============================================
 \begin{frame}{Representações Vetoriais de Texto}
-  \begin{columns}
-    \begin{column}{0.5\textwidth}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
       \textbf{\color{ufrnblue}TF-IDF (Frequencial)}
       \begin{itemize}
-        \item Abordagem clássica: sacola de palavras (bag-of-words)
-        \item Apenas frequência léxica — ignora contexto semântico
-        \item Vocabulário: até \textbf{1000 termos} após remoção de stopwords PT
-        \item Equação:
-        \small
-        \[ \text{TF-IDF}(t, d, D) = \text{tf}(t,d) \cdot \log\!\left(\frac{|D|}{1 + |\{d:t\in d\}|}\right) \]
+        \item Clássico \textit{bag-of-words}: ignora contexto semântico
+        \item Vocabulário: até \textbf{1.000 termos} após remoção de
+              \textit{stopwords} em PT
+        \item Vetores esparsos de alta dimensão
       \end{itemize}
+      \[ \mathrm{TF\text{-}IDF}(t,d,D) = \mathrm{tf}(t,d)\cdot
+         \log\!\left(\tfrac{|D|}{1+|\{d:t\in d\}|}\right) \]
     \end{column}
-    \begin{column}{0.5\textwidth}
+    \begin{column}{0.50\textwidth}
       \textbf{\color{ufrnblue}Embeddings Semânticos Densos}
       \begin{itemize}
-        \item Modelos neurais pré-treinados que mapeiam textos em espaços contínuos
-        \item Capturam sinônimos, contexto e relações implícitas
-        \item \textbf{SentenceTransformers:}\\
-          \texttt{all-MiniLM-L6-v2} — 384 dimensões
+        \item Redes neurais que capturam sinônimos, contexto e relações implícitas
+        \item \textbf{Sentence Transformers:}\\
+              \texttt{\small paraphrase-multilingual-MiniLM-L12-v2}\\
+              384 dim — \alert{treinado em PT-BR}
         \item \textbf{Ollama (local):}\\
-          \texttt{nomic-embed-text} — 768 dimensões
+              \texttt{nomic-embed-text} — 768 dim
       \end{itemize}
     \end{column}
   \end{columns}
 \end{frame}
 
+% =============================================
 \section{Algoritmos de Clustering}
 % =============================================
-% Slide 5: Algoritmos
-% =============================================
 \begin{frame}{Algoritmos de Agrupamento Testados}
-  \begin{columns}
-    \begin{column}{0.5\textwidth}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
       \begin{block}{K-Means}
-        Agrupamento particional que minimiza a inércia intra-cluster. Assume agrupamentos convexos e de tamanho similar.
+        \small Particional. Minimiza inércia intra-cluster.
+        Assume grupos convexos de tamanho similar ($K=6$).
       \end{block}
-      \vspace{0.3em}
+      \vspace{0.4em}
       \begin{block}{Agglomerative (Ward)}
-        Hierárquico ascendente (\textit{bottom-up}). Mescla pares de clusters pelo critério de Ward (menor variância dentro do grupo).
+        \small Hierárquico ascendente (\textit{bottom-up}).
+        Mescla pares pelo critério de Ward: menor variância intra-grupo.
       \end{block}
     \end{column}
-    \begin{column}{0.5\textwidth}
+    \begin{column}{0.48\textwidth}
       \begin{block}{DBSCAN}
-        Baseado em densidade. Identifica \textit{outliers} como ruído ($-1$). Sensível ao parâmetro $\epsilon$ e dimensionalidade do espaço.
+        \small Baseado em densidade. Classifica pontos isolados como
+        ruído ($-1$). Sensível ao parâmetro $\varepsilon$ e à
+        dimensionalidade.
       \end{block}
-      \vspace{0.3em}
+      \vspace{0.4em}
       \begin{block}{HDBSCAN}
-        Versão hierárquica do DBSCAN. Suporta densidades variáveis sem parâmetro $\epsilon$ fixo. Robusto a outliers.
+        \small Extensão hierárquica do DBSCAN. Suporta densidades
+        variáveis sem $\varepsilon$ fixo. Mais robusto a \textit{outliers}.
       \end{block}
     \end{column}
   \end{columns}
 \end{frame}
 
+% =============================================
 \section{Métricas de Avaliação}
 % =============================================
-% Slide 6: Métricas
-% =============================================
-\begin{frame}{Métricas de Validação}
-  \begin{columns}
-    \begin{column}{0.5\textwidth}
-      \textbf{\color{ufrnblue}Não Supervisionadas (sem ground truth)}
+\begin{frame}{Métricas de Validação do Clustering}
+  \begin{columns}[T]
+    \begin{column}{0.50\textwidth}
+      \textbf{\color{ufrnblue}Não Supervisionadas}
       \begin{itemize}
-        \item \textbf{Coeficiente de Silhueta:}
-        \[ s(i) = \frac{b(i) - a(i)}{\max(a(i),b(i))} \in [-1,+1] \]
-        onde $a(i)$ = distância intra-cluster, $b(i)$ = distância ao cluster vizinho mais próximo.
-        \item \textbf{Davies-Bouldin:} Menor $\Rightarrow$ clusters mais compactos e separados.
+        \item \textbf{Coeficiente de Silhueta} $s(i)\in[-1,+1]$:
+        \[ s(i) = \frac{b(i)-a(i)}{\max\bigl(a(i),b(i)\bigr)} \]
+        $a(i)$: distância média intra-cluster; $b(i)$: distância média
+        ao cluster vizinho mais próximo.
+        \item \textbf{Davies-Bouldin} $\downarrow$: clusters mais
+              compactos e separados.
       \end{itemize}
     \end{column}
-    \begin{column}{0.5\textwidth}
-      \textbf{\color{ufrnblue}Supervisionadas (vs. Classes Reais)}
+    \begin{column}{0.48\textwidth}
+      \textbf{\color{ufrnblue}Supervisionadas (vs.\ Ground Truth)}
       \begin{itemize}
-        \item \textbf{ARI (Adjusted Rand Index):} Concordância corrigida pelo acaso entre partição predita e \textit{ground truth}. Ideal $= 1.0$.
-        \item \textbf{NMI (Normalized Mutual Info):} Baseada em teoria da informação.
-        \item \textbf{Pureza:} Fração das amostras na classe majoritária de cada cluster.
+        \item \textbf{ARI} (Adjusted Rand Index): concordância
+              corrigida pelo acaso. Ideal $=1{,}0$.
+        \item \textbf{NMI} (Normalized Mutual Info): alinhamento
+              via teoria da informação. Varia em $[0,1]$.
+        \item \textbf{Pureza}: fração das amostras na classe majoritária
+              de cada cluster.
       \end{itemize}
     \end{column}
   \end{columns}
 \end{frame}
 
+% =============================================
 \section{Resultados Experimentais}
 % =============================================
-% Slide 7: Tabela de Resultados Reais
-% =============================================
-\begin{frame}{Resultados Quantitativos Completos}
-  {\small
+\begin{frame}{Resultados Quantitativos — 12 Configurações}
+  {\footnotesize
   \begin{table}[h]
     \centering
-    \setlength{\tabcolsep}{4pt}
-    \begin{tabular}{llccccc}
+    \setlength{\tabcolsep}{5pt}
+    \renewcommand{\arraystretch}{1.15}
+    \begin{tabular}{llcccc}
       \toprule
-      \textbf{Representação} & \textbf{Algoritmo} & \textbf{$K$} & \textbf{Silhueta} & \textbf{ARI} & \textbf{NMI} & \textbf{Pureza} \\
+      \textbf{Representação} & \textbf{Algoritmo} &
+      \textbf{Silhueta} & \textbf{ARI\,↑} & \textbf{NMI\,↑} & \textbf{Pureza\,↑}\\
       \midrule
       \rowcolor{positivegreen!20}
-      TF-IDF & \textbf{Agglomerative} & 6 & 0.025 & \textbf{0.852} & 0.852 & \textbf{0.933} \\
-      TF-IDF & K-Means & 6 & 0.024 & 0.705 & 0.778 & 0.857 \\
-      TF-IDF & DBSCAN & 29 & 0.007 & 0.029 & 0.369 & 0.994 \\
-      TF-IDF & HDBSCAN & 2 & 0.002 & 0.004 & 0.048 & 0.318 \\
+      TF-IDF & \textbf{Agglomerative} & 0{,}025 & \textbf{0{,}852} & \textbf{0{,}852} & \textbf{0{,}933}\\
+      TF-IDF & K-Means               & 0{,}024 & 0{,}705 & 0{,}778 & 0{,}857\\
+      TF-IDF & DBSCAN                & 0{,}007 & 0{,}029 & 0{,}369 & 0{,}994\textsuperscript{*}\\
+      TF-IDF & HDBSCAN               & 0{,}002 & 0{,}004 & 0{,}048 & 0{,}317\\
       \midrule
-      SentTransf. & K-Means & 6 & 0.064 & 0.422 & 0.499 & 0.689 \\
-      SentTransf. & Agglomerative & 6 & 0.046 & 0.338 & 0.423 & 0.625 \\
+      SentTransf.\ (PT-BR) & K-Means        & 0{,}083 & 0{,}556 & 0{,}665 & 0{,}752\\
+      SentTransf.\ (PT-BR) & Agglomerative  & 0{,}079 & 0{,}587 & 0{,}743 & 0{,}756\\
       \midrule
-      Ollama Nomic & K-Means & 6 & 0.064 & 0.500 & 0.616 & 0.724 \\
-      Ollama Nomic & Agglomerative & 6 & 0.056 & 0.455 & 0.565 & 0.695 \\
+      Ollama (nomic) & K-Means       & 0{,}064 & 0{,}500 & 0{,}616 & 0{,}724\\
+      Ollama (nomic) & Agglomerative & 0{,}056 & 0{,}455 & 0{,}564 & 0{,}695\\
       \bottomrule
     \end{tabular}
-    \caption{Métricas experimentais reais (pipeline executado com 315 notícias em Junho/2026).}
+    \vspace{0.3em}\\
+    {\tiny \textsuperscript{*}Pureza inflada: DBSCAN concentrou maioria das amostras
+     em clusters ruidosos. Pipeline executado em Junho/2026 com 315 notícias.}
   \end{table}
   }
-  \begin{block}{Destaque}
-    \textbf{TF-IDF + Agglomerative} alcançou o maior ARI (0.852), superando embeddings densos. Embeddings apresentaram maior separabilidade geométrica (Silhueta superior).
+  \vspace{-0.5em}
+  \begin{block}{\small Destaque}
+    \small \textbf{TF-IDF + Agglomerative} alcançou o maior ARI (0{,}852) e Pureza
+    (0{,}933), superando embeddings semânticos neste corpus.
   \end{block}
 \end{frame}
 
 % =============================================
-% Slide 8: Análise do Resultado Surpreendente
+% Slide: Visualização de ARI por configuração
+% =============================================
+\begin{frame}{Comparativo Visual de ARI por Configuração}
+  \begin{columns}[T]
+    \begin{column}{0.60\textwidth}
+      \begin{tikzpicture}
+        \begin{axis}[
+          xbar,
+          width=7.5cm, height=5.8cm,
+          xlabel={\small ARI},
+          xmin=0, xmax=1.0,
+          symbolic y coords={
+            {Ollama+Agg},
+            {Ollama+KM},
+            {TF-IDF+HDBSCAN},
+            {TF-IDF+DBSCAN},
+            {ST+KM},
+            {ST+Agg},
+            {TF-IDF+KM},
+            {TF-IDF+Agg}
+          },
+          ytick=data,
+          yticklabel style={font=\tiny},
+          xticklabel style={font=\tiny},
+          xlabel style={font=\small},
+          nodes near coords,
+          nodes near coords style={font=\tiny, anchor=west},
+          every node near coord/.append style={xshift=1pt},
+          bar width=5pt,
+          enlarge y limits=0.08,
+          grid=major,
+          grid style={dashed, gray!30},
+        ]
+          \addplot[fill=ufrnblue!70, draw=ufrnblue] coordinates {
+            ({0.455},{Ollama+Agg})
+            ({0.500},{Ollama+KM})
+            ({0.004},{TF-IDF+HDBSCAN})
+            ({0.029},{TF-IDF+DBSCAN})
+            ({0.556},{ST+KM})
+            ({0.587},{ST+Agg})
+            ({0.705},{TF-IDF+KM})
+            ({0.852},{TF-IDF+Agg})
+          };
+          % Destaque barra vencedora
+          \addplot[fill=positivegreen!80, draw=positivegreen] coordinates {
+            ({0.852},{TF-IDF+Agg})
+          };
+        \end{axis}
+      \end{tikzpicture}
+    \end{column}
+    \begin{column}{0.38\textwidth}
+      \begin{itemize}\small
+        \item \textbf{\color{positivegreen}TF-IDF + Agglomerative} é o vencedor
+              absoluto em ARI e NMI
+        \item \textbf{DBSCAN e HDBSCAN} colapam em espaços de alta dimensão
+              (maldição da dimensionalidade)
+        \item Embeddings semânticos têm Silhueta maior ($\approx 0{,}08$)
+              mas ARI menor — melhor separação geométrica, pior alinhamento
+              com a taxonomia humana
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% =============================================
+% Slide: Por que TF-IDF ganhou?
 % =============================================
 \begin{frame}{Por que o TF-IDF Superou os Embeddings?}
-  \begin{columns}
-    \begin{column}{0.55\textwidth}
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
       \begin{itemize}
-        \item \textbf{Dataset Pequeno (315 amostras):} TF-IDF em corpus pequeno captura bem os termos discriminativos das 6 classes — já que cada classe usa vocabulário específico e consistente.
-        \item \textbf{Linguagem Estruturada:} Notícias jornalísticas em português têm vocabulário de domínio bem delimitado (p.ex.: ``gol'', ``voto'', ``inflação'').
-        \item \textbf{Embeddings — Limitações no Contexto:}
+        \item \textbf{Corpus pequeno (315 amostras):} vocabulário jornalístico
+              específico por categoria — ``gol'', ``voto'', ``inflação'' — é
+              capturado diretamente pelo TF-IDF.
+        \item \textbf{Linkage de Ward:} minimiza variância intra-grupo e é
+              particularmente eficaz para vetores esparsos de alta dimensão.
+        \item \textbf{Embeddings — limitações:}
         \begin{itemize}
-          \item \texttt{all-MiniLM-L6-v2} foi treinado majoritariamente em inglês.
-          \item \texttt{nomic-embed-text} multimodal: não captura a distinção de classes tão bem em corpus pequeno.
+          \item \texttt{all-MiniLM-L6-v2} (inglês) gerava embeddings subótimos
+                para PT-BR.
+          \item Modelo atual (\texttt{multilingual-MiniLM}) melhora ARI
+                de $\approx 0{,}34$ para \textbf{0{,}587} no Agglomerative.
         \end{itemize}
       \end{itemize}
     \end{column}
-    \begin{column}{0.43\textwidth}
-      \begin{alertblock}{Interpretação}
-        Silhueta do TF-IDF é baixa ($\approx 0.02$) indicando que os vetores esparsos são geometricamente superpostos — mas o clustering hierárquico ainda detecta padrões corretos via distâncias de Ward.
+    \begin{column}{0.42\textwidth}
+      \begin{alertblock}{Paradoxo Silhueta vs.\ ARI}
+        \small TF-IDF tem Silhueta $\approx 0{,}02$ (vetores esparsos
+        geometricamente sobrepostos), mas ARI $= 0{,}852$.
+        Ward detecta padrões corretos via distâncias de Ward
+        mesmo sem separação euclidiana nítida.
       \end{alertblock}
-      \vspace{0.3em}
-      \begin{block}{DBSCAN/HDBSCAN}
-        Inadequados para espaços de alta dimensão — problema da \textit{maldição da dimensionalidade}: distâncias tornam-se indistinguíveis.
+      \vspace{0.4em}
+      \begin{block}{\small DBSCAN/HDBSCAN}
+        \small Alta dimensão $\Rightarrow$ distâncias euclidianas tornam-se
+        indistinguíveis: regiões densas desaparecem.
       \end{block}
     \end{column}
   \end{columns}
 \end{frame}
 
 % =============================================
-% Slide 9: Visualização 2D
+% Slide: Visualização 2D
 % =============================================
 \begin{frame}{Projeção 2D — Visualização dos Clusters}
-  \begin{columns}
-    \begin{column}{0.62\textwidth}
+  \begin{columns}[T]
+    \begin{column}{0.60\textwidth}
       \begin{figure}
         \centering
         \includegraphics[width=\linewidth]{../backend/outputs/comparacao_agrupamento_umap.png}
-        \caption{\small Projeção UMAP (SentenceTransformers + K-Means). Esquerda: grupos preditos. Direita: classes reais.}
+        \caption{\footnotesize Projeção UMAP. Esquerda: clusters preditos.
+                 Direita: classes reais (\textit{ground truth}).}
       \end{figure}
     \end{column}
-    \begin{column}{0.36\textwidth}
-      \begin{itemize}
-        \item \textbf{PCA:} Projeção linear. Preserva variância global, mas não separa clusters curvos.
-        \item \textbf{t-SNE:} Preserva estrutura local. Ideal para inspeção visual — mas não preserva distâncias globais.
-        \item \textbf{UMAP:} Compromisso entre local e global. Revela agrupamentos com topologia mais natural.
-        \item Dashboard interativo React permite inspecionar cada ponto individualmente.
+    \begin{column}{0.38\textwidth}
+      \begin{itemize}\small
+        \item \textbf{PCA:} Linear. Preserva variância global; não captura
+              estruturas não-lineares.
+        \item \textbf{t-SNE:} Preserva vizinhança local. Excelente para
+              inspeção visual — não preserva distâncias globais.
+        \item \textbf{UMAP:} Equilíbrio local/global. Topologia mais natural
+              do espaço semântico.
+        \item Dashboard React permite transitar entre as 3 projeções com
+              animação de \textit{morphing} suave.
       \end{itemize}
     \end{column}
   \end{columns}
 \end{frame}
 
+% =============================================
 \section{Explicação Semântica via LLM}
 % =============================================
-% Slide 10: Landmarks e LLM
-% =============================================
-\begin{frame}{Extração de Landmarks e Explicação por LLM}
-  \begin{columns}
-    \begin{column}{0.5\textwidth}
-      \textbf{\color{ufrnblue}Seleção de Amostras Chave}
+\begin{frame}{Seleção de Landmarks e Explicação por LLM}
+  \begin{columns}[T]
+    \begin{column}{0.50\textwidth}
+      \textbf{\color{ufrnblue}Seleção de Amostras-Chave}
       \begin{itemize}
-        \item \textbf{Medoides (centrais):} Documentos com menor distância euclidiana ao centroide. Núcleo puro do cluster.
-        \item \textbf{Fronteira (ambíguos):} Documentos com menor coeficiente de silhueta individual (próximos a $0$ ou negativos). Indicam interseção temática.
+        \item \textbf{Medoides (centrais):} menor distância euclidiana ao
+              centroide — núcleo puro do tema.
+        \item \textbf{Fronteiras (ambíguos):} menor coeficiente de silhueta
+              individual ($s \approx 0$ ou negativo) — textos com interseção
+              temática entre clusters.
       \end{itemize}
+      \vspace{0.4em}
+      \begin{exampleblock}{\small Saída JSON do LLM}
+        \tiny\texttt{\{"rotulo": "Economia Verde",\\
+        "resumo": "...", "coerencia": "Alta"\}}
+      \end{exampleblock}
     \end{column}
-    \begin{column}{0.5\textwidth}
+    \begin{column}{0.48\textwidth}
       \textbf{\color{ufrnblue}Pipeline de Explicação}
-      \begin{enumerate}
+      \begin{enumerate}\small
         \item Selecionar 3 medoides + 3 fronteiristas por cluster
-        \item Montar prompt estruturado (1 × por cluster)
-        \item Chamar LLM: \textbf{Ollama local} (Qwen 2.5 7B) + \textbf{Gemma 4 31B} (nuvem)
-        \item Obter JSON: \texttt{rotulo, resumo, analise\_fronteira, coerencia}
+        \item Montar prompt estruturado em PT com o texto das amostras
+        \item Chamar \textbf{Ollama local} (Qwen 2.5 7B) \emph{e}
+              \textbf{Gemma 4 31B} (nuvem) em paralelo
+        \item Parsear JSON: \texttt{rotulo}, \texttt{resumo},
+              \texttt{analise\_fronteira}, \texttt{coerencia}
+        \item Retry exponencial contra erros 503; \textit{fail-fast} em cota 429
       \end{enumerate}
     \end{column}
   \end{columns}
 \end{frame}
 
 % =============================================
-% Slide 11: Rótulos LLM Gerados
+% Slide: Tabela de rótulos LLM
 % =============================================
-\begin{frame}{Rótulos Gerados pelos LLMs para os Clusters}
+\begin{frame}{Rótulos Gerados pelos LLMs (TF-IDF + Agglomerative)}
+  {\small
   \begin{table}
     \centering
-    \small
+    \setlength{\tabcolsep}{4pt}
+    \renewcommand{\arraystretch}{1.2}
     \begin{tabular}{clll}
       \toprule
-      \textbf{Cluster} & \textbf{Classe Real Dominante} & \textbf{Ollama (Qwen 2.5)} & \textbf{Gemma 4 31B} \\
+      \textbf{\#} & \textbf{Classe Real Dominante} &
+      \textbf{Ollama (Qwen 2.5)} & \textbf{Gemma 4 31B}\\
       \midrule
-      0 & Tecnologia/Inovação & Desenvolvimento e Inovação & Desenvolvimento e Capacitação \\
-      1 & Esportes & Esportes e Aventura & Esportes e Ecoturismo \\
-      2 & Política & Política Social e Democrática & Política e Governança Social \\
-      3 & Direitos Humanos & Direitos Humanos & Políticas de Direitos Humanos \\
-      4 & Cultura & Cultura e Economia Criativa & Cultura e Economia Criativa \\
-      5 & Economia/Meio Ambiente & Economia Verde & Economia Verde e Sustentabilidade \\
+      0 & Variedades e Sociedade & Cultura e Desenvolvimento   & Cultura e Capacitação\\
+      1 & Esportes               & Esportes e Aventura          & Esportes e Ecoturismo\\
+      2 & Política               & Política Social              & Política e Governança\\
+      3 & Polícia e Direitos     & Direitos Humanos             & Políticas de Direitos\\
+      4 & Turismo / Cultura      & Cultura e Economia Criativa  & Cultura e Econ.\ Criativa\\
+      5 & Economia               & Economia Verde               & Economia e Sustentabilidade\\
       \bottomrule
     \end{tabular}
-    \caption{Rótulos semânticos gerados automaticamente via LLM (SentenceTransformers + K-Means).}
+    \caption{\footnotesize Rótulos semânticos gerados via LLM para a melhor
+             configuração (TF-IDF + Agglomerative, Pureza 0{,}933).}
   \end{table}
-  \begin{block}{Observação}
-    Ambos os modelos convergiram para rótulos semanticamente consistentes com as categorias humanas. Gemma 4 31B produziu rótulos ligeiramente mais descritivos; Qwen 2.5 7B foi mais conciso e direto.
+  }
+  \vspace{-0.4em}
+  \begin{block}{\small Observação}
+    \small Ambos os modelos convergiram para rótulos semanticamente
+    coerentes com as categorias humanas. Gemma 4 31B produziu rótulos
+    ligeiramente mais descritivos; Qwen 2.5 7B foi mais conciso.
   \end{block}
 \end{frame}
 
 % =============================================
-% Slide 12: LLM Local vs Nuvem
+% Slide: LLM Local vs Nuvem
 % =============================================
-\begin{frame}{LLM Local (Ollama) vs Nuvem (Gemini/Gemma)}
-  \begin{columns}
-    \begin{column}{0.5\textwidth}
+\begin{frame}{LLM Local (Ollama) vs.\ Nuvem (Gemini/Gemma)}
+  \begin{columns}[T]
+    \begin{column}{0.50\textwidth}
       \textbf{\color{ufrnblue}Ollama Local — Qwen 2.5 7B}
-      \begin{itemize}
-        \item \textbf{Privacidade total:} Dados não saem da máquina
-        \item \textbf{Sem custo de API:} 100\% gratuito e offline-first
-        \item \textbf{Latência:} $\approx$ 1.8s a 2.4s por cluster (GPU local)
-        \item \textbf{Fallback automático} para \texttt{llama3.1:8b} em caso de erro
+      \begin{itemize}\small
+        \item \textbf{Privacidade total:} dados não saem da máquina
+        \item \textbf{Sem custo de API:} 100\% gratuito e \textit{offline-first}
+        \item \textbf{Latência:} $\approx$ 1{,}8\,s -- 2{,}4\,s por cluster (GPU local)
+        \item \textit{Fallback} automático para \texttt{llama3.1:8b}
         \item Excelente qualidade gramatical em português
       \end{itemize}
     \end{column}
-    \begin{column}{0.5\textwidth}
+    \begin{column}{0.48\textwidth}
       \textbf{\color{ufrnblue}Google Gemma 4 31B (API)}
-      \begin{itemize}
-        \item \textbf{Maior capacidade:} 31B parâmetros vs 7B local
-        \item \textbf{Latência:} $\approx$ 0.8s a 1.1s (nuvem)
+      \begin{itemize}\small
+        \item \textbf{Maior capacidade:} 31B parâmetros vs.\ 7B local
+        \item \textbf{Latência:} $\approx$ 0{,}8\,s -- 1{,}1\,s (nuvem)
         \item Retentativas exponenciais contra erros 503 temporários
         \item \textit{Fail-fast} imediato ao atingir cota (429)
-        \item Rótulos ligeiramente mais descritivos e detalhados
+        \item Rótulos ligeiramente mais descritivos
       \end{itemize}
     \end{column}
   \end{columns}
   \vspace{0.3em}
   \begin{alertblock}{Arquitetura Híbrida}
-    O pipeline executa \textbf{em paralelo} ambos os LLMs para cada cluster, permitindo comparação direta da qualidade semântica entre modelos local e em nuvem.
+    \small O pipeline executa \textbf{ambos os LLMs em paralelo} para cada
+    cluster, permitindo comparação direta da qualidade semântica entre
+    inferência local e em nuvem.
   \end{alertblock}
 \end{frame}
 
+% =============================================
 \section{Visualizador Interativo}
 % =============================================
-% Slide 13: Dashboard React
-% =============================================
 \begin{frame}{Dashboard Interativo — React Tokyo Night}
-  \begin{columns}
-    \begin{column}{0.55\textwidth}
-      \begin{itemize}
-        \item Frontend em \textbf{React + Vite} com tema \textit{Tokyo Night} (modo escuro premium)
-        \item Gráfico de dispersão interativo com \textbf{Recharts}:
-        \begin{itemize}
-          \item Alternância em tempo real entre: PCA, t-SNE, UMAP
-          \item Filtro por Representação (TF-IDF, ST, Ollama) e Algoritmo
-          \item Clique em legenda para \textbf{ativar/desativar clusters}
-          \item Clique em ponto: painel lateral com texto original, classe real, cluster e rótulo LLM
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \begin{itemize}\small
+        \item Frontend em \textbf{React 18 + Vite + TypeScript} com tema
+              \textit{Tokyo Night} (dark premium)
+        \item Gráfico de dispersão \textbf{Canvas 2D} com zoom/pan nativo:
+        \begin{itemize}\footnotesize
+          \item Transição com \textit{morphing} animado (400\,ms)
+                entre PCA, t-SNE e UMAP
+          \item Filtro por representação e algoritmo
+          \item Legenda com toggle individual de clusters
+          \item Barra de busca com \textit{highlight} em tempo real
         \end{itemize}
-        \item Tabela de métricas comparativa em tempo real
-        \item Painel de explicação LLM por cluster (Ollama vs Gemini)
+        \item Painel de métricas comparativas automático
+        \item Comparação lado a lado Ollama vs.\ Gemini por cluster
       \end{itemize}
     \end{column}
-    \begin{column}{0.43\textwidth}
-      \begin{block}{Funcionalidades do Ponto}
-        Ao clicar em uma notícia no gráfico:
+    \begin{column}{0.42\textwidth}
+      \begin{block}{\small Ao clicar em uma notícia}
+        \footnotesize
         \begin{itemize}
           \item Texto original e expandido
           \item Classe real (\textit{ground truth})
-          \item Cluster predito
-          \item Rótulo semântico gerado pelo LLM
+          \item Cluster predito + rótulo semântico LLM
           \item Coeficiente de silhueta individual
+          \item Animação de \textit{pulse} no ponto selecionado
         \end{itemize}
+      \end{block}
+      \vspace{0.4em}
+      \begin{block}{\small Tecnologias}
+        \footnotesize Zustand (estado) · Canvas 2D (plot) ·
+        Tailwind CSS · Lucide React
       \end{block}
     \end{column}
   \end{columns}
 \end{frame}
 
+% =============================================
 \section{Conclusão}
 % =============================================
-% Slide 14: Conclusão
-% =============================================
-\begin{frame}{Conclusão}
+\begin{frame}{Conclusão e Próximos Passos}
   \begin{itemize}
-    \item \textbf{Resultado Principal:} TF-IDF + Agglomerative (Ward) obteve o maior ARI (0.852) neste corpus pequeno de 315 notícias jornalísticas em PT-BR.
-    \item \textbf{Embeddings Densos:} Maior qualidade geométrica (Silhueta $\approx 0.06$) e interpretabilidade visual via projeções UMAP/t-SNE — mas ARI inferior ao TF-IDF no corpus testado.
-    \item \textbf{DBSCAN/HDBSCAN:} Desempenho limitado em espaços de alta dimensão — maldição da dimensionalidade.
-    \item \textbf{Explicação LLM:} Ambos os modelos (Qwen 2.5 local + Gemma 4 31B) produziram rótulos semanticamente coerentes — validando a abordagem híbrida local/nuvem.
-    \item \textbf{Pipeline Reproduzível:} Código aberto, configuração via \texttt{.env}, visualizador interativo para análise exploratória.
+    \item \textbf{Melhor resultado:} TF-IDF + Agglomerative (Ward) —
+          ARI\,$=0{,}852$, Pureza\,$=0{,}933$ em 315 notícias jornalísticas
+          PT-BR.
+    \item \textbf{Embeddings densos:} maior qualidade geométrica
+          (Silhueta\,$\approx 0{,}08$) e interpretabilidade visual via UMAP/t-SNE
+          — mas ARI inferior ao TF-IDF no corpus testado.
+    \item \textbf{DBSCAN/HDBSCAN:} ineficazes em espaços de alta dimensão
+          — maldição da dimensionalidade.
+    \item \textbf{Explicação LLM:} Qwen 2.5 local + Gemma 4 31B convergiram
+          para rótulos semanticamente coerentes, validando a abordagem híbrida.
+    \item \textbf{Pipeline reprodutível:} código aberto, configuração via
+          \texttt{.env}, dashboard interativo para análise exploratória.
   \end{itemize}
   \begin{block}{Próximos Passos}
     \small
-    Substituir cache JSON por banco vetorial dinâmico (\textbf{Elasticsearch} / \textbf{Qdrant} via Docker) para escalabilidade a centenas de milhares de notícias.
+    (1) Testar \textbf{BERTimbau} (\texttt{neuralmind/bert-base-portuguese-cased})
+    para embeddings PT-BR mais robustos.\quad
+    (2) Substituir JSON estático por banco vetorial dinâmico
+    (\textbf{Qdrant} via Docker) para escalar a corpus maiores.
   \end{block}
 \end{frame}
 
 % =============================================
-% Slide 15: Encerramento
+% Slide Final: Encerramento
 % =============================================
 \begin{frame}{}
   \vfill
   \centering
-  {\Large \textbf{Obrigado!}}\\[1.2em]
-  {\large Dúvidas e Discussão}\\[2em]
+  {\Large \textbf{Obrigado!}}\\[1.0em]
+  {\large Dúvidas e Discussão}\\[1.8em]
   \begin{tabular}{ll}
     \textbf{Repositório:} & \texttt{github.com/takaokensei/news-clustering-llm} \\
-    \textbf{Orientador:}  & Prof. José Alfredo F. Costa (DCA/UFRN) \\
+    \textbf{Orientador:}  & Prof.\ José Alfredo F.\ Costa (DCA/UFRN) \\
     \textbf{Autor:}       & Cauã Vitor — Engenharia Elétrica, UFRN \\
   \end{tabular}
   \vfill
