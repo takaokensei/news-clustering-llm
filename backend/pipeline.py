@@ -1,12 +1,31 @@
 import os
 import sys
+
+# 1. ENVIRONMENT CONFIGURATION & PATHS (Setup first to configure environment before any imports)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+dotenv_path = os.path.join(BASE_DIR, "backend", ".env")
+from dotenv import load_dotenv
+load_dotenv(dotenv_path)
+
+# Workaround for Windows OLLAMA_HOST=0.0.0.0 environment issue
+# Must run BEFORE importing ollama so the client registers the correct host
+if os.environ.get("OLLAMA_HOST") == "0.0.0.0":
+    os.environ["OLLAMA_HOST"] = "127.0.0.1"
+    print("[OK] Corrigido OLLAMA_HOST de 0.0.0.0 para 127.0.0.1 antes de importar")
+
+# Workaround for conflicting/expired system GOOGLE_API_KEY
+if "GEMINI_API_KEY" in os.environ:
+    os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
+    print("[OK] Configurado GOOGLE_API_KEY com a chave de API fornecida no arquivo .env")
+else:
+    print("[WARN] GEMINI_API_KEY nao foi encontrada no arquivo .env. O pipeline do Gemini nao funcionara.")
+
 import time
 import json
 import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from dotenv import load_dotenv
 
 # Machine Learning and Clustering imports
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -26,27 +45,9 @@ from google import genai
 # Suppress warnings for clean execution
 warnings.filterwarnings('ignore')
 
-# 1. ENVIRONMENT CONFIGURATION & PATHS
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_PATH = os.path.join(BASE_DIR, "Base_dados_textos_6_classes.csv")
 OUTPUT_DIR = os.path.join(BASE_DIR, "backend", "outputs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-# Load environment variables
-dotenv_path = os.path.join(BASE_DIR, "backend", ".env")
-load_dotenv(dotenv_path)
-
-# Workaround for Windows OLLAMA_HOST=0.0.0.0 environment issue
-if os.environ.get("OLLAMA_HOST") == "0.0.0.0":
-    os.environ["OLLAMA_HOST"] = "127.0.0.1"
-    print("[OK] Corrigido OLLAMA_HOST de 0.0.0.0 para 127.0.0.1")
-
-# Workaround for conflicting/expired system GOOGLE_API_KEY
-if "GEMINI_API_KEY" in os.environ:
-    os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
-    print("[OK] Configurado GOOGLE_API_KEY com a chave de API fornecida no arquivo .env")
-else:
-    print("[WARN] GEMINI_API_KEY nao foi encontrada no arquivo .env. O pipeline do Gemini nao funcionara.")
 
 # List of standard Portuguese stopwords for TF-IDF
 PT_STOPWORDS = [
@@ -69,7 +70,7 @@ def load_dataset():
         df = pd.read_csv(DATA_PATH, sep=';', encoding='utf-8')
         print(f"Base carregada com sucesso! Total de registros: {len(df)}")
         # Clean null values in text columns to prevent vectorization crashes
-        df = df.dropna(subset=["Texto Original", "Texto Expandido"])
+        df = df.dropna(subset=["Texto Original", "Texto Expandido"]).reset_index(drop=True)
         print(f"Apos limpar registros nulos: {len(df)} registros.")
         # Check column names
         expected_cols = ["Texto Original", "Texto Expandido", "Classe", "Categoria"]
@@ -300,8 +301,8 @@ def extract_key_documents(X, labels, df, num_samples=3):
         
     return cluster_landmarks
 
-# Helper function to call Gemini with exponential backoff retries for 503 errors
-def generate_with_retry(client_gemini, prompt, model='gemini-2.5-flash', max_retries=4, initial_delay=3.0):
+# Helper function to call Gemini/Gemma with exponential backoff retries for 503 errors
+def generate_with_retry(client_gemini, prompt, model='gemma-4-31b-it', max_retries=4, initial_delay=3.0):
     delay = initial_delay
     for attempt in range(max_retries):
         try:
@@ -311,14 +312,22 @@ def generate_with_retry(client_gemini, prompt, model='gemini-2.5-flash', max_ret
             )
             return response
         except Exception as e:
+            err_msg = str(e)
+            if "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg:
+                print(f"    [ERR] Cloud API quota exceeded (429/RESOURCE_EXHAUSTED). Skipping retries.")
+                raise e
             if attempt == max_retries - 1:
                 raise e
-            print(f"    [WARN] Falha na chamada do Gemini (tentativa {attempt+1}/{max_retries}): {e}. Retentando em {delay}s...")
+            print(f"    [WARN] Falha na chamada do modelo Cloud (tentativa {attempt+1}/{max_retries}): {e}. Retentando em {delay}s...")
             time.sleep(delay)
             delay *= 2
 
+# Global flag to track if Gemini/Gemma quota is exhausted
+GEMINI_QUOTA_EXHAUSTED = False
+
 # 8. LLM EXPLANATION (OLLAMA vs GEMINI)
 def explain_cluster_with_llm(cluster_id, central_docs, frontier_docs, client_gemini=None):
+    global GEMINI_QUOTA_EXHAUSTED
     # Formulate prompt in Portuguese
     prompt = f"""Você é um cientista de dados e linguista sênior especialista em Processamento de Linguagem Natural (PLN).
 Analise os seguintes textos de notícias em português que foram agrupados no Cluster #{cluster_id} por um algoritmo de aprendizado de máquina.
@@ -348,12 +357,12 @@ Você DEVE responder ESTRITAMENTE em formato JSON estruturado com as seguintes c
 
     explanations = {}
 
-    # --- 8.1 CLOUD LLM: Gemini 2.5 Flash ---
-    if client_gemini:
+    # --- 8.1 CLOUD LLM: Gemma 4 31B ---
+    if client_gemini and not GEMINI_QUOTA_EXHAUSTED:
         t0 = time.time()
         try:
-            # Call Gemini with a retry wrapper to absorb transient 503 unavailability
-            response = generate_with_retry(client_gemini, prompt, model='gemini-2.5-flash')
+            # Call Gemma/Gemini with a retry wrapper to absorb transient 503 unavailability
+            response = generate_with_retry(client_gemini, prompt, model='gemma-4-31b-it')
             text_response = response.text.strip()
             # Remove potential markdown wrappers in case the LLM ignored instruction
             if text_response.startswith("```json"):
@@ -368,6 +377,9 @@ Você DEVE responder ESTRITAMENTE em formato JSON estruturado com as seguintes c
             print(f"  [OK] Cluster {cluster_id} explicado por Gemini em {parsed_json['latency']:.2f}s")
         except Exception as e:
             print(f"  [ERR] Erro no Gemini para Cluster {cluster_id}: {e}")
+            if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                print("  [WARN] Desativando chamadas ao Gemini devido a limite de quota excedido (429).")
+                GEMINI_QUOTA_EXHAUSTED = True
             explanations["gemini"] = {
                 "rotulo": "Erro ao Processar",
                 "resumo": f"Erro na chamada do Gemini: {str(e)}",
@@ -378,7 +390,7 @@ Você DEVE responder ESTRITAMENTE em formato JSON estruturado com as seguintes c
     else:
         explanations["gemini"] = {
             "rotulo": "Nao Executado",
-            "resumo": "API Key do Gemini nao configurada no .env",
+            "resumo": "API Key do Gemini nao configurada ou limite de cota excedido (429)",
             "analise_fronteira": "N/A",
             "coerencia": "N/A",
             "latency": 0.0
@@ -440,7 +452,7 @@ def export_latex_plots(coordinates_dict, labels_dict, df):
     rep_key = "sentence_transformers"
     clust_key = "kmeans"
     
-    if rep_key not in coordinates_dict or clust_key not in labels_dict:
+    if rep_key not in coordinates_dict or rep_key not in labels_dict or clust_key not in labels_dict[rep_key]:
         print("Aviso: Configuracoes ausentes para geracao de plot LaTeX.")
         return
         

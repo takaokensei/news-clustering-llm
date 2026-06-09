@@ -1,0 +1,9 @@
+\babel@toc {portuguese}{}\relax 
+\beamer@sectionintoc {1}{Motivação e Objetivo}{3}{0}{1}
+\beamer@sectionintoc {2}{Representações Vetoriais}{4}{0}{2}
+\beamer@sectionintoc {3}{Algoritmos de Clustering}{5}{0}{3}
+\beamer@sectionintoc {4}{Métricas de Avaliação}{6}{0}{4}
+\beamer@sectionintoc {5}{Resultados Experimentais}{7}{0}{5}
+\beamer@sectionintoc {6}{Explicação Semântica via LLM}{10}{0}{6}
+\beamer@sectionintoc {7}{Visualizador Interativo}{13}{0}{7}
+\beamer@sectionintoc {8}{Conclusão}{14}{0}{8}

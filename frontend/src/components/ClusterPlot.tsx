@@ -13,7 +13,8 @@ export const ClusterPlot: React.FC = () => {
     selectedDocId,
     colorMode,
     setSelectedCluster,
-    setSelectedDocId
+    setSelectedDocId,
+    llmExplanations
   } = useClusteringStore();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -27,6 +28,24 @@ export const ClusterPlot: React.FC = () => {
   const [hoveredDoc, setHoveredDoc] = useState<Document | null>(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
   const [showAxes, setShowAxes] = useState(true);
+  const [hiddenItems, setHiddenItems] = useState<Set<string | number>>(new Set());
+
+  // Clear hidden items when configurations change
+  useEffect(() => {
+    setHiddenItems(new Set());
+  }, [colorMode, selectedRep, selectedAlg]);
+
+  const toggleLegendItem = (item: string | number) => {
+    setHiddenItems(prev => {
+      const next = new Set(prev);
+      if (next.has(item)) {
+        next.delete(item);
+      } else {
+        next.add(item);
+      }
+      return next;
+    });
+  };
 
   // Tokyo Night Colors mapping
   const clusterColors: { [key: number]: string } = {
@@ -66,6 +85,21 @@ export const ClusterPlot: React.FC = () => {
     return proj ? { x: proj.x, y: proj.y } : null;
   };
 
+  const getClusterLabel = (clusterId: number): string => {
+    if (clusterId === -1) return 'Ruído';
+    const configKey = `${selectedRep}_${selectedAlg}`;
+    const clusterData = llmExplanations[configKey]?.[clusterId];
+    if (clusterData) {
+      const explanation = clusterData?.explanations?.gemini?.rotulo !== 'Não Executado' && clusterData?.explanations?.gemini?.rotulo !== 'Erro ao Processar'
+        ? clusterData?.explanations?.gemini 
+        : clusterData?.explanations?.ollama;
+      if (explanation && explanation.rotulo && explanation.rotulo !== 'Não Executado' && explanation.rotulo !== 'Erro ao Processar') {
+        return `Cluster ${clusterId}: ${explanation.rotulo}`;
+      }
+    }
+    return `Cluster ${clusterId}`;
+  };
+
   // Reset zoom and pan to fit all points
   const resetZoom = () => {
     setZoom(1.0);
@@ -96,9 +130,20 @@ export const ClusterPlot: React.FC = () => {
     ctx.fillStyle = '#16161e';
     ctx.fillRect(0, 0, width, height);
 
-    // Filter valid documents that have coordinates for selected configs
-    const validDocs = dataset.filter(doc => getDocCoords(doc) !== null);
-    if (validDocs.length === 0) {
+    // Filter valid documents that have coordinates for selected configs and are not hidden
+    const validDocs = dataset.filter(doc => {
+      if (getDocCoords(doc) === null) return false;
+      if (colorMode === 'real') {
+        if (hiddenItems.has(doc.true_category)) return false;
+      } else {
+        const clusterId = doc.clustering[selectedRep]?.[selectedAlg];
+        if (clusterId !== undefined && hiddenItems.has(clusterId)) return false;
+      }
+      return true;
+    });
+
+    const allValidDocs = dataset.filter(doc => getDocCoords(doc) !== null);
+    if (allValidDocs.length === 0) {
       // Draw message if empty
       ctx.fillStyle = '#a9b1d6';
       ctx.font = '14px Inter';
@@ -107,11 +152,19 @@ export const ClusterPlot: React.FC = () => {
       return;
     }
 
-    // Find min/max ranges in the raw coordinates to fit to canvas
+    if (validDocs.length === 0 && dataset.length > 0) {
+      ctx.fillStyle = '#a9b1d6';
+      ctx.font = '14px Inter';
+      ctx.textAlign = 'center';
+      ctx.fillText('Nenhuma classe visível. Ative as classes na legenda abaixo.', width / 2, height / 2);
+      return;
+    }
+
+    // Find min/max ranges in the raw coordinates to fit to canvas using ALL points
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
 
-    validDocs.forEach(doc => {
+    allValidDocs.forEach(doc => {
       const coords = getDocCoords(doc)!;
       if (coords.x < minX) minX = coords.x;
       if (coords.x > maxX) maxX = coords.x;
@@ -244,7 +297,7 @@ export const ClusterPlot: React.FC = () => {
     // Attach unproject for mouse click mapping
     canvas.setAttribute('data-unproject', JSON.stringify({ minX, rangeX, minY, rangeY, width, height }));
 
-  }, [dataset, selectedRep, selectedAlg, selectedProj, selectedCluster, selectedDocId, zoom, pan, hoveredDoc, colorMode, showAxes]);
+  }, [dataset, selectedRep, selectedAlg, selectedProj, selectedCluster, selectedDocId, zoom, pan, hoveredDoc, colorMode, showAxes, hiddenItems]);
 
   // Handle Dragging / Panning
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -273,13 +326,23 @@ export const ClusterPlot: React.FC = () => {
     const width = canvas.width / (window.devicePixelRatio || 1);
     const height = canvas.height / (window.devicePixelRatio || 1);
 
-    const validDocs = dataset.filter(doc => getDocCoords(doc) !== null);
+    const validDocs = dataset.filter(doc => {
+      if (getDocCoords(doc) === null) return false;
+      if (colorMode === 'real') {
+        if (hiddenItems.has(doc.true_category)) return false;
+      } else {
+        const clusterId = doc.clustering[selectedRep]?.[selectedAlg];
+        if (clusterId !== undefined && hiddenItems.has(clusterId)) return false;
+      }
+      return true;
+    });
     if (validDocs.length === 0) return;
 
+    const allValidDocs = dataset.filter(doc => getDocCoords(doc) !== null);
     let minX = Infinity, maxX = -Infinity;
     let minY = Infinity, maxY = -Infinity;
 
-    validDocs.forEach(doc => {
+    allValidDocs.forEach(doc => {
       const coords = getDocCoords(doc)!;
       if (coords.x < minX) minX = coords.x;
       if (coords.x > maxX) maxX = coords.x;
@@ -455,28 +518,56 @@ export const ClusterPlot: React.FC = () => {
 
       {/* Helper Legend Panel */}
       <div className="px-4 py-2 bg-tokyo-dark bg-opacity-80 border-t border-tokyo-border text-[10px] text-tokyo-muted z-10 flex flex-wrap justify-between items-center space-x-2 gap-y-1">
-        <span>Arraste para mover, roda do mouse para zoom, clique para detalhar</span>
-        <div className="flex space-x-3">
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-tokyo-blue"></span>
-            <span>Economia</span>
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-tokyo-orange"></span>
-            <span>Esportes</span>
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-tokyo-green"></span>
-            <span>Tecnologia</span>
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-tokyo-magenta"></span>
-            <span>Política</span>
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-tokyo-yellow"></span>
-            <span>Cultura</span>
-          </div>
+        <span>Arraste para mover, roda do mouse para zoom, clique para detalhar. Clique na legenda para ocultar classes.</span>
+        <div className="flex flex-wrap gap-3">
+          {colorMode === 'real' ? (
+            // Real categories legend
+            ["Economia", "Esportes", "Tecnologia", "Política", "Cultura", "Saúde"].map(cat => {
+              const isHidden = hiddenItems.has(cat);
+              const color = getCategoryColor(cat);
+              return (
+                <button
+                  key={cat}
+                  onClick={() => toggleLegendItem(cat)}
+                  className={`flex items-center space-x-1.5 hover:text-tokyo-text transition cursor-pointer select-none ${isHidden ? 'opacity-40' : 'opacity-100'}`}
+                >
+                  <span 
+                    className="w-2.5 h-2.5 rounded-full border transition" 
+                    style={{ 
+                      backgroundColor: isHidden ? 'transparent' : color, 
+                      borderColor: color 
+                    }}
+                  />
+                  <span className={isHidden ? 'line-through decoration-tokyo-muted' : ''}>{cat}</span>
+                </button>
+              );
+            })
+          ) : (
+            // Cluster IDs legend
+            Array.from(new Set(dataset.map(doc => doc.clustering[selectedRep]?.[selectedAlg]).filter(val => val !== undefined)))
+              .sort((a, b) => a - b)
+              .map(clusterId => {
+                const isHidden = hiddenItems.has(clusterId);
+                const color = clusterColors[clusterId] || '#565f89';
+                const label = getClusterLabel(clusterId);
+                return (
+                  <button
+                    key={clusterId}
+                    onClick={() => toggleLegendItem(clusterId)}
+                    className={`flex items-center space-x-1.5 hover:text-tokyo-text transition cursor-pointer select-none ${isHidden ? 'opacity-40' : 'opacity-100'}`}
+                  >
+                    <span 
+                      className="w-2.5 h-2.5 rounded-full border transition" 
+                      style={{ 
+                        backgroundColor: isHidden ? 'transparent' : color, 
+                        borderColor: color 
+                      }}
+                    />
+                    <span className={isHidden ? 'line-through decoration-tokyo-muted' : ''}>{label}</span>
+                  </button>
+                );
+              })
+          )}
         </div>
       </div>
     </div>

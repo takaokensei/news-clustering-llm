@@ -194,13 +194,30 @@ export const ClusterDetails: React.FC = () => {
 
         {/* Selected Document Reader panel (if a doc is clicked) */}
         {selectedDoc && (
-          <div className="p-3.5 rounded-lg border border-tokyo-border bg-tokyo-panel bg-opacity-50 text-xs space-y-2">
+          <div className="p-3.5 rounded-lg border border-tokyo-border bg-tokyo-panel bg-opacity-50 text-xs space-y-2.5">
             <div className="flex justify-between items-center text-[10px] text-tokyo-muted font-mono border-b border-tokyo-border pb-1.5">
               <span className="text-tokyo-blue">Leitor de Notícia</span>
               <span>ID: {selectedDoc.id}</span>
             </div>
+            
             <h5 className="font-bold text-tokyo-text leading-tight">{selectedDoc.original_text}</h5>
             
+            {/* Real Class vs Predicted Badge Display */}
+            <div className="flex flex-wrap gap-x-3 gap-y-1 py-1 border-t border-b border-tokyo-border border-opacity-30">
+              <div className="flex items-center space-x-1.5">
+                <span className="text-[10px] text-tokyo-muted">Categoria Real:</span>
+                <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-tokyo-blue bg-opacity-10 text-tokyo-blue border border-tokyo-blue border-opacity-20 uppercase">
+                  {selectedDoc.true_category}
+                </span>
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <span className="text-[10px] text-tokyo-muted">Cluster Predito:</span>
+                <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-tokyo-magenta bg-opacity-10 text-tokyo-magenta border border-tokyo-magenta border-opacity-20">
+                  #{selectedDoc.clustering[selectedRep]?.[selectedAlg]}
+                </span>
+              </div>
+            </div>
+
             <div className="space-y-1.5 pt-1">
               <span className="text-[10px] font-bold text-tokyo-cyan block">Texto Expandido:</span>
               <p className="text-tokyo-text leading-relaxed text-[11px] max-h-40 overflow-y-auto bg-tokyo-dark bg-opacity-40 p-2 rounded border border-tokyo-border border-opacity-40 font-serif">
