@@ -19,6 +19,14 @@ import pandas as pd
 import warnings
 warnings.filterwarnings('ignore')
 
+# Force UTF-8 stdout encoding on Windows to support terminal emojis
+if sys.platform.startswith('win'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
+
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 

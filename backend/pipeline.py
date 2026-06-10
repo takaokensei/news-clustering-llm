@@ -1,6 +1,13 @@
 import os
 import sys
 
+# Force UTF-8 stdout encoding on Windows to support terminal emojis
+if sys.platform.startswith('win'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 # 1. ENVIRONMENT CONFIGURATION & PATHS (Setup first to configure environment before any imports)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 dotenv_path = os.path.join(BASE_DIR, "backend", ".env")
